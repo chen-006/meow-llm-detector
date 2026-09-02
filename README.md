@@ -29,11 +29,7 @@
 
 ## 一分钟上手
 
-Windows 用户解压后双击 `Windows一键启动.bat`。Linux 或 macOS 用户运行：
-
-```bash
-sh start_detector.sh
-```
+Windows 用户解压后双击 `Windows一键启动.bat`。Linux 或 macOS 用户运行：start_detector.sh
 
 浏览器会打开本机页面。按下面顺序填写：
 
