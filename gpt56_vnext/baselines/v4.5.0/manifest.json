@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "packages": [
+    {
+      "id": "meow-gpt-baseline",
+      "version": "4.5.0-rc4",
+      "file": "meow-gpt-baseline--4.5.0-rc4.meow.json",
+      "content_sha256": "1ee40e3c9d6900701b86ffe5e698155d9bdf6503d20796431bad96666bd04fff"
+    },
+    {
+      "id": "meow-claude-baseline",
+      "version": "4.5.0-rc3",
+      "file": "meow-claude-baseline--4.5.0-rc3.meow.json",
+      "content_sha256": "cce1a377deaa8909c89e2ef2611aeb7e11e14983658d71344831a67c44e32d8e"
+    }
+  ]
+}

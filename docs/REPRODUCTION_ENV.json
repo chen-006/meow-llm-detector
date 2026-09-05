@@ -1,0 +1,8 @@
+{
+  "python": "3.12.14",
+  "numpy": "2.3.5",
+  "httpx": "0.28.1",
+  "keyring": "25.7.0",
+  "platform": "Windows x86_64",
+  "scope": "original_calibration_environment"
+}

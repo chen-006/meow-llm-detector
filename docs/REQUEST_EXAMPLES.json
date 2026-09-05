@@ -1,0 +1,247 @@
+[
+  {
+    "mode": "gpt",
+    "cell": "ZH027",
+    "representation": "reconstructed_from_frozen_contract_not_capture",
+    "user_agent": "Codex Desktop/0.147.0-alpha.1.2 (Windows 10.0.26200; x86_64) unknown (codex_exec; 0.147.0-alpha.1.2)",
+    "request": {
+      "model": "openai/gpt-6-astra",
+      "stream": true,
+      "input": [
+        {
+          "role": "system",
+          "content": "."
+        },
+        {
+          "role": "user",
+          "content": "随便说出一个拟声词，只回答拟声词。"
+        }
+      ],
+      "store": false,
+      "reasoning": {
+        "effort": "low"
+      },
+      "max_output_tokens": 128
+    }
+  },
+  {
+    "mode": "gpt",
+    "cell": "b80_letter_count",
+    "representation": "reconstructed_from_frozen_contract_not_capture",
+    "user_agent": "Codex Desktop/0.147.0-alpha.1.2 (Windows 10.0.26200; x86_64) unknown (codex_exec; 0.147.0-alpha.1.2)",
+    "request": {
+      "model": "openai/gpt-6-astra",
+      "stream": true,
+      "input": [
+        {
+          "role": "system",
+          "content": "."
+        },
+        {
+          "role": "user",
+          "content": "Count the letter r in strawberry. Reply only with the integer."
+        }
+      ],
+      "store": false,
+      "reasoning": {
+        "effort": "low"
+      },
+      "max_output_tokens": 128
+    }
+  },
+  {
+    "mode": "gpt",
+    "cell": "rand_bird",
+    "representation": "reconstructed_from_frozen_contract_not_capture",
+    "user_agent": "Codex Desktop/0.147.0-alpha.1.2 (Windows 10.0.26200; x86_64) unknown (codex_exec; 0.147.0-alpha.1.2)",
+    "request": {
+      "model": "openai/gpt-6-astra",
+      "stream": true,
+      "input": [
+        {
+          "role": "system",
+          "content": "."
+        },
+        {
+          "role": "user",
+          "content": "Name a random bird. Reply with ONLY the bird name, one word."
+        }
+      ],
+      "store": false,
+      "reasoning": {
+        "effort": "low"
+      },
+      "max_output_tokens": 128
+    }
+  },
+  {
+    "mode": "gpt",
+    "cell": "rand_country",
+    "representation": "reconstructed_from_frozen_contract_not_capture",
+    "user_agent": "Codex Desktop/0.147.0-alpha.1.2 (Windows 10.0.26200; x86_64) unknown (codex_exec; 0.147.0-alpha.1.2)",
+    "request": {
+      "model": "openai/gpt-6-astra",
+      "stream": true,
+      "input": [
+        {
+          "role": "system",
+          "content": "."
+        },
+        {
+          "role": "user",
+          "content": "Name a random country. Reply with ONLY the country name."
+        }
+      ],
+      "store": false,
+      "reasoning": {
+        "effort": "low"
+      },
+      "max_output_tokens": 128
+    }
+  },
+  {
+    "mode": "gpt",
+    "cell": "ZH006",
+    "representation": "reconstructed_from_frozen_contract_not_capture",
+    "user_agent": "Codex Desktop/0.147.0-alpha.1.2 (Windows 10.0.26200; x86_64) unknown (codex_exec; 0.147.0-alpha.1.2)",
+    "request": {
+      "model": "openai/gpt-6-astra",
+      "stream": true,
+      "input": [
+        {
+          "role": "system",
+          "content": "."
+        },
+        {
+          "role": "user",
+          "content": "随便说出一个国家，只回答国名。"
+        }
+      ],
+      "store": false,
+      "reasoning": {
+        "effort": "low"
+      },
+      "max_output_tokens": 128
+    }
+  },
+  {
+    "mode": "claude",
+    "cell": "CL011",
+    "representation": "reconstructed_from_frozen_contract_not_capture",
+    "user_agent": "claude-cli/2.1.251 (external, cli)",
+    "request": {
+      "model": "anthropic/claude-fable-5.1",
+      "stream": true,
+      "system": ".",
+      "messages": [
+        {
+          "role": "user",
+          "content": "不要思考，直接回答。从mepo、takri、sulon、vash中选一个词，只回答所选词。"
+        }
+      ],
+      "max_tokens": 128,
+      "thinking": {
+        "type": "adaptive"
+      },
+      "output_config": {
+        "effort": "low"
+      }
+    }
+  },
+  {
+    "mode": "claude",
+    "cell": "CL033",
+    "representation": "reconstructed_from_frozen_contract_not_capture",
+    "user_agent": "claude-cli/2.1.251 (external, cli)",
+    "request": {
+      "model": "anthropic/claude-fable-5.1",
+      "stream": true,
+      "system": ".",
+      "messages": [
+        {
+          "role": "user",
+          "content": "不要思考，直接回答。随便选一个大写英文字母，只回答该字母。"
+        }
+      ],
+      "max_tokens": 128,
+      "thinking": {
+        "type": "adaptive"
+      },
+      "output_config": {
+        "effort": "low"
+      }
+    }
+  },
+  {
+    "mode": "claude",
+    "cell": "CL039",
+    "representation": "reconstructed_from_frozen_contract_not_capture",
+    "user_agent": "claude-cli/2.1.251 (external, cli)",
+    "request": {
+      "model": "anthropic/claude-fable-5.1",
+      "stream": true,
+      "system": ".",
+      "messages": [
+        {
+          "role": "user",
+          "content": "不要思考，直接回答。从再见、后来、结束、未完中选一个词，只回答所选词。"
+        }
+      ],
+      "max_tokens": 128,
+      "thinking": {
+        "type": "adaptive"
+      },
+      "output_config": {
+        "effort": "low"
+      }
+    }
+  },
+  {
+    "mode": "claude",
+    "cell": "CL057",
+    "representation": "reconstructed_from_frozen_contract_not_capture",
+    "user_agent": "claude-cli/2.1.251 (external, cli)",
+    "request": {
+      "model": "anthropic/claude-fable-5.1",
+      "stream": true,
+      "system": ".",
+      "messages": [
+        {
+          "role": "user",
+          "content": "不要思考，直接回答。空车有1到10号座位，选一个，只回答编号。"
+        }
+      ],
+      "max_tokens": 128,
+      "thinking": {
+        "type": "adaptive"
+      },
+      "output_config": {
+        "effort": "low"
+      }
+    }
+  },
+  {
+    "mode": "claude",
+    "cell": "CL085",
+    "representation": "reconstructed_from_frozen_contract_not_capture",
+    "user_agent": "claude-cli/2.1.251 (external, cli)",
+    "request": {
+      "model": "anthropic/claude-fable-5.1",
+      "stream": true,
+      "system": ".",
+      "messages": [
+        {
+          "role": "user",
+          "content": "不要思考，直接回答。从山地、平原、高原、盆地中选一种地形，只回答名称。"
+        }
+      ],
+      "max_tokens": 128,
+      "thinking": {
+        "type": "adaptive"
+      },
+      "output_config": {
+        "effort": "low"
+      }
+    }
+  }
+]

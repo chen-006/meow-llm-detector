@@ -1,768 +1,554 @@
 from __future__ import annotations
 
+import asyncio
+from datetime import datetime, timezone
+from concurrent.futures import TimeoutError as FutureTimeout
+from contextlib import ExitStack
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import hashlib
-import json
-import mimetypes
+from http.cookies import SimpleCookie
 from pathlib import Path
-import re
 import secrets
-import sqlite3
 import threading
-from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
+import uuid
 
-from .detector import DEFAULT_BASELINE, DetectorSession
-from .generator import GeneratorPlan, ProbeGeneratorSession, probe_document, verify_probe_file, wrap_probe_file
-from .presets import estimate_plan, get_preset, normalize_config, preset_catalog
-from .probability_model import load_baseline
-from .retention import RetentionWriteError
+from .benchmark import DEFAULT_TIER_COUNTS, MAX_PACKAGE_BYTES, build_package, normalize_project
+from .catalog import BenchmarkCatalog
+from .selection import similar_probes
+from .candidate_generation import generate_candidates, seed_summary
+from .detector import DetectorSession
+from .directory_lock import exclusive_directory
+from .transport import AsyncTransport
+from .errors import AppError, RequestError
+from .executor import runtime_options
+from .generator import COLLECTION_WINDOW_GAP_SECONDS, ProbeGeneratorSession, analyze_reports, calibrate_package, collection_contract, merge_windows, selected_project
+from .presets import EndpointPresets, estimate_plan
+from .schedule import SingleRunSchedule
 from .store import SQLiteStateStore
-from .transport import StreamingTransport
-from .utils import canonical_json, normalize_api_base_url, utc_now
-
+from .updates import ProgramUpdates
+from .utils import canonical_json, integer, normalize_api_base_url, recognized_provider, strict_json_loads
 
 WEB_ROOT = Path(__file__).with_name("web")
-
-
-def _validated_resume_config(value: Any) -> tuple[dict[str, Any], str | None]:
-    try:
-        config = normalize_config(value)
-        for custom_probe in config.get("custom_probes", []):
-            verify_probe_file(probe_document(custom_probe))
-        return config, None
-    except (KeyError, TypeError, ValueError):
-        return get_preset("single", "low"), "最近配置已损坏或不兼容，已恢复单次低档默认参数"
-
-
-def _probability_probe_catalog() -> list[dict[str, Any]]:
-    try:
-        baseline = load_baseline(DEFAULT_BASELINE)
-    except (OSError, ValueError, json.JSONDecodeError):
-        return []
-    names = {
-        "rand_country": "固定随机国家",
-        "rand_bird": "固定随机鸟",
-        "b80_letter_count": "b80 字符计数",
-    }
-    rows = []
-    for probe_id, name in names.items():
-        cells = [
-            value for key, value in baseline.get("cells", {}).items()
-            if key.startswith(probe_id + "|")
-        ]
-        quality = [
-            value for key, value in baseline.get("cells_quality", {}).items()
-            if key.startswith(probe_id + "|")
-        ]
-        raw_profiles = ((baseline.get("raw_counts") or {}).get(probe_id) or {}).get("profiles") or {}
-        trusted_windows = min((
-            len(model_value.get("windows") or {})
-            for profile_value in raw_profiles.values()
-            for model_value in (profile_value.get("models") or {}).values()
-        ), default=0)
-        rows.append({
-            "id": probe_id,
-            "name": name,
-            "type": "行为指纹",
-            "description": "按固定题面形成类别分布，并与三模型多时间窗可信基线比较。",
-            "trusted_profiles": len(cells),
-            "between_model_jsd": [cell.get("between_model_jsd") for cell in cells],
-            "within_model_jsd": [cell.get("within_model_jsd") for cell in cells],
-            "weights": [cell.get("weight") for cell in cells],
-            "minimum_valid_rate": min((value.get("minimum_valid_rate", 0.0) for value in quality), default=0.0),
-            "trusted_windows": trusted_windows,
-            "time_stability_verified": all(bool(cell.get("time_stability_verified")) for cell in cells),
-            "scoring_version": baseline.get("scoring_version"),
-        })
-    return rows
+ASSETS = {"/": ("index.html", "text/html; charset=utf-8"),
+          "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
+          "/assets/workbench.js": ("workbench.js", "text/javascript; charset=utf-8"),
+          "/assets/i18n.js": ("i18n.js", "text/javascript; charset=utf-8"),
+          "/assets/style.css": ("style.css", "text/css; charset=utf-8")}
 
 
 class AppState:
-    def __init__(self, runs_root: Path):
-        self.token = secrets.token_urlsafe(32)
-        self.runs_root = runs_root
-        self.runs_root.mkdir(parents=True, exist_ok=True)
-        self.lock = threading.RLock()
-        self.detector: dict[str, Any] = {"status": "idle", "updated_at": utc_now()}
-        self.generator: dict[str, Any] = {"status": "idle", "updated_at": utc_now()}
-        self.detector_session: DetectorSession | None = None
-        self.detector_thread: threading.Thread | None = None
-        self.detector_store: SQLiteStateStore | None = None
-        self.detector_run_dir: Path | None = None
-        self.generator_session: ProbeGeneratorSession | None = None
-        self.generator_thread: threading.Thread | None = None
-        self.generator_store: SQLiteStateStore | None = None
-        self.generator_run_dir: Path | None = None
-        self.pending_custom_probe: dict[str, Any] | None = None
-        self._restore_detector_state()
-        self._restore_generator_state()
+    def __init__(self, root, locale="zh-CN", *, bundled=True):
+        if locale not in {"zh-CN", "en"}:
+            raise AppError("unsupported_language")
+        self.locale = locale
+        self.root = Path(root).resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+        with ExitStack() as resources:
+            resources.enter_context(exclusive_directory(self.root))
+            self.store = SQLiteStateStore(self.root / "state.sqlite3")
+            resources.callback(self.store.close)
+            self.store.interrupt_active_sessions()
+            self.catalog = BenchmarkCatalog(self.root / "benchmarks", Path(__file__).with_name("baselines") / "v4.5.0" if bundled else None)
+            self.presets = EndpointPresets(self.store)
+            self.updates = ProgramUpdates(self.root / "updates", self.store)
+            self.active = {}
+            self._closed = False
+            self.rate_gates = {}
+            self.calibration = None
+            for task in self.store.documents("simulation_task"):
+                if task["status"] == "running":
+                    task["status"] = "paused"
+                    self.store.put_document("simulation_task", task["id"], task)
+            for identity in self.store.document_ids("simulation_result"):
+                saved = self.store.document("simulation_task", identity)
+                if not saved or "models" not in saved or any("sample_scope" not in value for value in saved.get("tiers", {}).values()):
+                    package = self.store.document("simulation_result", identity)
+                    self.store.put_document("simulation_task", identity, self.simulation_summary(identity, package))
+            self.loop = asyncio.new_event_loop()
+            self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
+            self.thread.start()
+            resources.callback(self._stop_loop)
+            self.schedule = SingleRunSchedule(self.store, self.scheduled_run)
+            self._resources = resources.pop_all()
 
-    def _restore_detector_state(self) -> None:
-        candidates: list[tuple[str, Path, str]] = []
-        for database in (self.runs_root / "detector").glob("session-*/state.sqlite3"):
-            try:
-                connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True, timeout=2)
-                row = connection.execute(
-                    "SELECT session_id,created_at FROM sessions WHERE kind='detector' ORDER BY created_at DESC LIMIT 1"
-                ).fetchone()
-                connection.close()
-            except (OSError, sqlite3.Error):
+    def call(self, coroutine, timeout=30):
+        future = asyncio.run_coroutine_threadsafe(coroutine, self.loop)
+        try:
+            return future.result(timeout)
+        except FutureTimeout:
+            future.cancel()
+            raise
+
+    async def generate(self, body):
+        if getattr(self, "generation_task", None) and not self.generation_task.done():
+            raise AppError("generation_already_running", status=409)
+        options = body.get("options")
+        key = body.get("key")
+        if not isinstance(options, dict) or not isinstance(key, str) or not key:
+            raise AppError("generation_connection_required")
+        self.generation_task = asyncio.current_task()
+        result = await generate_candidates(options, key, gates=self.rate_gates)
+        self.store.put_document("generation", result["id"], result)
+        return result
+
+    def connection(self, body):
+        key = body.get("key", "")
+        if body.get("endpoint_id"):
+            preset, saved = self.presets.connection(body["endpoint_id"])
+            return {"base_url": preset["base_url"], "allow_insecure": preset["allow_insecure"],
+                    "request_model": body.get("request_model") or preset["model"]}, key or saved
+        return {key: body.get(key) for key in ("base_url", "allow_insecure", "request_model")}, key
+
+    async def start_run(self, kind, body, *, connection_override=None):
+        connection, key = connection_override or self.connection(body)
+        if not isinstance(key, str) or not key:
+            raise AppError("credential_required")
+        identity = body.get("resume_id") or uuid.uuid4().hex
+        if identity in self.active:
+            raise AppError("session_already_running", status=409)
+        if body.get("resume_id"):
+            saved = self.store.session(identity)
+            if not saved or saved["kind"] != kind:
+                raise AppError("resume_not_found")
+            config = saved["config"]
+            if connection.get("base_url") != config["base_url"]:
+                raise AppError("frozen_configuration_mismatch")
+            source = config["package"] if kind == "detection" else config["project"]
+            if kind == "detection":
+                self.catalog.check_withdrawal(source)
+        else:
+            config = {**connection, "runtime": body.get("runtime", {})}
+            if kind == "detection":
+                source = self.catalog.get(body.get("package_id"), body.get("package_version"))
+                config["benchmark_publisher"] = next(item["publisher"] for item in self.catalog.local() if item["id"] == source["id"] and item["version"] == source["version"])
+                config.update({"tier": body.get("tier", "low"), "claimed_model": body.get("claimed_model")})
+                if not config.get("request_model"):
+                    config["request_model"] = body.get("claimed_model")
+            else:
+                source = normalize_project(body.get("project"))
+                config.update({"window": body.get("window", 1), "samples": body.get("samples", 3), "probe_ids": body.get("probe_ids")})
+                if config["window"] != 1:
+                    prior = self.store.report(body.get("prior_session_id", ""))
+                    if not prior or prior.get("kind") != "collection" or collection_contract(prior["project"]) != collection_contract(source) or prior["progress"]["status"] != "complete":
+                        raise AppError("prior_collection_required")
+                    previous = prior["collection"]["windows"].get(str(config["window"] - 1))
+                    if not previous:
+                        raise AppError("prior_collection_required")
+                    ended = datetime.fromisoformat(previous["ended_at"])
+                    if (datetime.now(timezone.utc) - ended).total_seconds() < COLLECTION_WINDOW_GAP_SECONDS:
+                        raise AppError("collection_window_gap_not_elapsed")
+        if kind == "collection" and any(runner.config["kind"] == "collection" and
+                runner.config["project"]["id"] == source["id"] for runner, _task in self.active.values()):
+            raise AppError("collection_already_running", status=409)
+        options = runtime_options(config.get("runtime", {}))
+        sender = AsyncTransport([key], timeout=options["timeout"], concurrency=options["workers"], gates=self.rate_gates)
+        try:
+            runner = (DetectorSession if kind == "detection" else ProbeGeneratorSession)(
+                self.store, identity, source, config, key, transport=sender)
+        except Exception:
+            await sender.close()
+            raise
+        task = asyncio.create_task(runner.run())
+        self.active[identity] = (runner, task)
+        task.add_done_callback(lambda _future: self.active.pop(identity, None))
+        return identity
+
+    def collection_history(self, project):
+        project = normalize_project(project, draft=True)
+        contract = collection_contract(project)
+        result = []
+        for row in self.store.collection_sessions(project["id"]):
+            config = strict_json_loads(row["config_json"])
+            if collection_contract(config["project"]) != contract:
                 continue
-            if row:
-                candidates.append((str(row[1]), database.parent, str(row[0])))
-        if not candidates:
-            return
-        _created_at, run_dir, session_id = max(candidates, key=lambda item: item[0])
-        store = SQLiteStateStore(run_dir / "state.sqlite3")
-        session = store.session(session_id)
-        if session is None:
-            store.close()
-            return
-        if session["status"] in {"running", "stopping"}:
-            store.update_session_status(session_id, "interrupted")
-            session = store.session(session_id) or session
-        self.detector_store = store
-        self.detector_run_dir = run_dir
-        self.detector = self._status_from_store(store, session_id)
+            result.append({"session_id": row["session_id"], "window": config["window"], "samples": config["samples"],
+                "base_url": config["base_url"], "created_at": row["created_at"],
+                "next_due": datetime.fromisoformat(row["updated_at"]).timestamp() + COLLECTION_WINDOW_GAP_SECONDS,
+                **self.store.progress(row["session_id"])})
+        return result
+
+    async def scheduled_run(self, body):
+        endpoint = body["endpoint_snapshot"]
+        key = self.presets.vault.load(endpoint["credential_ref"])
+        package = self.catalog.get(body["package_id"], body["package_version"])
+        if package["content_sha256"] != body["package_sha256"]:
+            raise AppError("scheduled_package_changed")
+        connection = {"base_url": endpoint["base_url"], "allow_insecure": endpoint["allow_insecure"],
+                      "request_model": body["request_model"]}
+        identity = await self.start_run("detection", body, connection_override=(connection, key))
+        await self.active[identity][1]
+        return identity
+
+    async def start_schedule(self, body):
+        if self.schedule.task and not self.schedule.task.done():
+            raise AppError("schedule_already_active", status=409)
+        detection = body.get("detection", {})
+        if not isinstance(detection, dict) or detection.get("key"):
+            raise AppError("schedule_requires_saved_endpoint")
+        endpoint = self.store.document("endpoint", detection.get("endpoint_id", ""))
+        if not endpoint or not endpoint.get("credential_ref"):
+            raise AppError("schedule_requires_saved_endpoint")
+        package = self.catalog.get(detection.get("package_id"), detection.get("package_version"))
+        if package["mode"] != endpoint["mode"]:
+            raise AppError("endpoint_mode_mismatch")
+        if detection.get("claimed_model") not in {model["id"] for model in package["models"]} or detection.get("tier", "low") not in package["tiers"]:
+            raise AppError("invalid_detection_configuration")
+        previous = self.store.document("schedule", "active")
+        runtime = runtime_options(detection.get("runtime", {}))
+        reference = uuid.uuid4().hex
+        self.presets.vault.save(reference, self.presets.vault.load(endpoint["credential_ref"]))
+        endpoint = {**endpoint, "credential_ref": reference, "schedule_owned": True}
+        frozen = {"package_id": package["id"], "package_version": package["version"],
+                  "package_sha256": package["content_sha256"], "endpoint_snapshot": endpoint,
+                  "claimed_model": detection.get("claimed_model"),
+                  "request_model": detection.get("request_model") or endpoint["model"],
+                  "tier": detection.get("tier", "low"), "runtime": runtime}
+        try:
+            await self.schedule.start({"detection": frozen,
+                "interval_seconds": body.get("interval_seconds", 3600), "round_limit": body.get("round_limit")})
+        except Exception:
+            self.presets.vault.delete(reference)
+            raise
+        old_endpoint = (previous or {}).get("detection", {}).get("endpoint_snapshot", {})
+        if old_endpoint.get("schedule_owned"):
+            self.presets.vault.delete(old_endpoint["credential_ref"])
+
+    async def stop_run(self, identity):
+        if identity in self.active:
+            self.active[identity][0].stop()
+        return {"stopping": identity}
+
+    async def delete_schedule(self):
+        if self.schedule.task and not self.schedule.task.done():
+            raise AppError("schedule_already_active", status=409)
+        saved = self.store.document("schedule", "active")
+        endpoint = (saved or {}).get("detection", {}).get("endpoint_snapshot", {})
+        if endpoint.get("schedule_owned"):
+            self.presets.vault.delete(endpoint["credential_ref"])
+        self.store.delete_document("schedule", "active")
+        return {"deleted": True}
+
+    def status(self):
+        return {"sessions": self.store.session_summaries(), "active": list(self.active),
+                "schedule": self.schedule.status(), "calibration": self.calibration}
+
+    def snapshot(self):
+        return {**self.status(), "version": "4.5.0", "brand": "meow LLM Detector", "packages": self.catalog.local(),
+                "endpoints": self.presets.list(), "projects": self.store.documents("project"), "catalog": self.catalog.index()}
 
     @staticmethod
-    def _status_from_store(store: SQLiteStateStore, session_id: str) -> dict[str, Any]:
-        session = store.session(session_id) or {}
-        config, resume_notice = _validated_resume_config(session.get("config") or {})
-        report = store.report(session_id)
-        status = {
-            "status": session.get("status", "idle"),
-            "session_id": session_id,
-            "updated_at": session.get("updated_at") or utc_now(),
-            "mode": config.get("mode"),
-            "preset": config.get("preset"),
-            "official": config.get("official"),
-            "config_hash": config.get("config_hash"),
-            "resume_config": config,
-            "claimed_model": session.get("claimed_model"),
-            "request_model": session.get("request_model") or session.get("claimed_model"),
-            "safe_endpoint": session.get("safe_endpoint"),
-            "report_available": report is not None,
-            "verdict": report.get("overall_verdict") if report else None,
-            "resume_config_valid": resume_notice is None,
-        }
-        if resume_notice:
-            status["resume_config_notice_cn"] = resume_notice
-        return status
+    def simulation_summary(identity, package):
+        return {"id": identity, "status": "complete", "project_id": package["id"], "name": package["metadata"]["name"],
+            "models": {model["id"]: model["name"] for model in package["models"]},
+            "package_id": package["id"], "package_version": package["version"],
+            "tiers": {tier: {"sample_scope": result.get("sample_scope", "not_declared"),
+                "target_denominator": result.get("target_denominator", "not_declared"),
+                **{key: value for key, value in result.items() if key in
+                {"status", "thresholds", "correct_rates", "target", "selection_target"}}}
+                for tier, result in package["calibration"]["tiers"].items()}}
 
-    def current_detector_store(self) -> SQLiteStateStore | None:
-        if self.detector_session is not None:
-            return self.detector_session.store
-        return self.detector_store
+    async def simulate(self, body):
+        if self.calibration and self.calibration.get("status") == "running":
+            raise AppError("simulation_already_running", status=409)
+        identity = body.get("resume_id")
+        if identity:
+            task = self.store.document("simulation_task", identity)
+            if not task:
+                raise AppError("simulation_result_not_found", status=404)
+            if task["status"] == "complete":
+                return {"id": identity}
+            inputs = self.store.document("simulation_input", identity)
+            if not inputs:
+                raise AppError("simulation_input_missing")
+            project, observations, collection, options = (inputs[key] for key in ("project", "observations", "collection", "options"))
+        else:
+            reports = [self.store.report(identity) for identity in body.get("session_ids", [])]
+            if any(not report or report.get("kind") != "collection" for report in reports):
+                raise AppError("collection_required")
+            project, observations, collection = merge_windows(reports)
+            if body.get("project"):
+                current = normalize_project(body["project"])
+                if collection_contract(current) != collection_contract(project):
+                    raise AppError("collection_contract_mismatch")
+                project = current
+            project = selected_project(project, body.get("selected", []), body.get("tiers"))
+            options = body.get("options", {})
+            identity = uuid.uuid4().hex
+            self.store.put_document("simulation_input", identity, {
+                "project": project, "observations": observations, "collection": collection, "options": options})
+        cancel = threading.Event()
+        self.calibration = {"id": identity, "project_id": project["id"], "name": project["metadata"]["name"],
+                            "status": "running", "progress": {}}
+        self.store.put_document("simulation_task", identity, self.calibration)
+        self.calibration_cancel = cancel
 
-    def _restore_generator_state(self) -> None:
-        candidates: list[tuple[str, Path, str]] = []
-        for database in (self.runs_root / "generator").glob("session-*/state.sqlite3"):
+        async def calculate():
             try:
-                connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True, timeout=2)
-                row = connection.execute(
-                    "SELECT session_id,created_at FROM sessions WHERE kind='generator' ORDER BY created_at DESC LIMIT 1"
-                ).fetchone()
-                connection.close()
-            except (OSError, sqlite3.Error):
-                continue
-            if row:
-                candidates.append((str(row[1]), database.parent, str(row[0])))
-        if not candidates:
+                package = await asyncio.to_thread(calibrate_package, project, observations, collection, options,
+                    checkpoint_root=self.root / "simulations" / identity, cancel=cancel,
+                    progress=lambda progress: self.calibration.update({"progress": progress}))
+                self.store.put_document("simulation_result", identity, package)
+                self.calibration = self.simulation_summary(identity, package)
+            except AppError as exc:
+                self.calibration.update({"status": "paused" if exc.code == "simulation_paused" else "error", "error": exc.public()})
+            except Exception:
+                self.calibration.update({"status": "error", "error": {"code": "simulation_failed"}})
+            finally:
+                self.store.put_document("simulation_task", identity, self.calibration)
+        self.calibration_task = asyncio.create_task(calculate())
+        return {"id": identity}
+
+    async def shutdown(self):
+        self.schedule.pause()
+        for runner, _task in tuple(self.active.values()):
+            runner.stop()
+        if self.active:
+            await asyncio.gather(*(task for _runner, task in tuple(self.active.values())), return_exceptions=True)
+        if self.schedule.task:
+            await asyncio.gather(self.schedule.task, return_exceptions=True)
+        if hasattr(self, "calibration_cancel"):
+            self.calibration_cancel.set()
+            await asyncio.gather(self.calibration_task, return_exceptions=True)
+        generation = getattr(self, "generation_task", None)
+        if generation and not generation.done():
+            generation.cancel()
+            await asyncio.gather(generation, return_exceptions=True)
+
+    def close(self):
+        if self._closed:
             return
-        _created_at, run_dir, session_id = max(candidates, key=lambda item: item[0])
-        store = SQLiteStateStore(run_dir / "state.sqlite3")
-        session = store.session(session_id)
-        if session is None:
-            store.close()
-            return
-        if session["status"] in {"running", "stopping"}:
-            store.update_session_status(session_id, "interrupted")
-        self.generator_store = store
-        self.generator_run_dir = run_dir
-        self.generator = self._generator_status_from_store(store, session_id, run_dir)
+        self._closed = True
+        try:
+            self.call(self.shutdown())
+        finally:
+            self._resources.close()
 
-    @staticmethod
-    def _generator_status_from_store(store: SQLiteStateStore, session_id: str, run_dir: Path) -> dict[str, Any]:
-        session = store.session(session_id) or {}
-        config = session.get("config") or {}
-        output = run_dir / f"{config.get('probe_id', 'probe')}.gpt56probe.json"
-        status = {
-            "status": session.get("status", "idle"),
-            "session_id": session_id,
-            "updated_at": session.get("updated_at") or utc_now(),
-            "probe_id": config.get("probe_id"),
-            "resume_plan": config,
-            "safe_endpoint": session.get("safe_endpoint"),
-            "output": str(output) if output.is_file() else None,
-        }
-        status["progress"] = store.progress(session_id)
-        status["progress"]["remaining"] = max(0, status["progress"]["planned"] - status["progress"]["logical_completed"])
-        errors = [row for row in store.events(session_id) if row.get("event") == "generator_error"]
-        if errors:
-            status["error"] = (errors[-1].get("payload") or {}).get("safe_message")
-        return status
-
-    def current_generator_store(self) -> SQLiteStateStore | None:
-        if self.generator_session is not None:
-            return self.generator_session.store
-        return self.generator_store
-
-    def safe_status(self, name: str) -> dict[str, Any]:
-        with self.lock:
-            status = dict(self.detector if name == "detector" else self.generator)
-            session = self.detector_session if name == "detector" else self.generator_session
-            store = self.current_detector_store() if name == "detector" else self.current_generator_store()
-            session_id = status.get("session_id")
-        if store is not None and session_id:
-            try:
-                status = self._status_from_store(store, str(session_id)) if name == "detector" else self._generator_status_from_store(
-                    store, str(session_id), self.generator_run_dir or self.runs_root / "generator" / f"session-{session_id}"
-                )
-            except (KeyError, RuntimeError, sqlite3.Error):
-                pass
-        if session is not None:
-            try:
-                status["progress"] = session.progress_snapshot()
-            except (KeyError, RuntimeError):
-                pass
-        return status
-
-
-def _json_bytes(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
-
-
-def _safe_endpoint(value: str) -> str:
-    parsed = urlsplit(normalize_api_base_url(value))
-    host = parsed.hostname or ""
-    if parsed.port:
-        host += f":{parsed.port}"
-    return f"{parsed.scheme}://{host}{parsed.path.rstrip('/')}"
-
-
-def _safe_exception_message(exc: BaseException) -> str:
-    safe_message = getattr(exc, "safe_message", None)
-    if isinstance(safe_message, str) and safe_message.strip():
-        return safe_message.strip()
-    message = str(exc).strip() or type(exc).__name__
-    message = re.sub(r"(?i)\bBearer\s+\S+", "Bearer <redacted>", message)
-    message = re.sub(r"\bsk-[A-Za-z0-9_-]{8,}\b", "<redacted-key>", message)
-    message = re.sub(r"(?i)[A-Za-z]:\\Users\\[^\\\s]+", lambda _match: r"C:\Users\<redacted>", message)
-    message = re.sub(r"\s+", " ", message)[:600]
-    translations = (
-        (r"detector is already running or stopping", "检测正在运行或停止中，请等待当前会话结束"),
-        (r"generator is already running or stopping", "探针生成器正在运行或停止中，请等待当前会话结束"),
-        (r"request body too large", "提交的数据过大"),
-        (r"JSON body must be an object", "请求正文必须是JSON对象"),
-        (r"probe content hash mismatch", "自定义探针内容校验失败，请重新导出后再导入"),
-        (r"unsupported fingerprint baseline schema", "指纹基线版本不受支持"),
-        (r"fingerprint baseline content hash mismatch", "指纹基线完整性校验失败"),
-        (r"runtime catalog is missing", "运行资源缺失，请重新下载完整发行包"),
-        (r"No such file|cannot find|not found", "检测所需文件缺失，请重新下载完整发行包"),
-    )
-    for pattern, translated in translations:
-        if re.search(pattern, message, flags=re.IGNORECASE):
-            return translated
-    if re.search(r"[A-Za-z]{3,}", message):
-        return "本地运行发生未分类异常；请下载完整JSON报告并检查安装文件是否完整"
-    return message
+    def _stop_loop(self):
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self.thread.join(timeout=5)
+        self.loop.close()
 
 
 class Handler(BaseHTTPRequestHandler):
-    server: "AppServer"
+    server_version = "meow"
+    protocol_version = "HTTP/1.0"
 
-    def log_message(self, _format: str, *_args: Any) -> None:
-        return
+    def log_message(self, *_args):
+        pass
 
-    def _send_json(self, value: Any, status: int = 200) -> None:
-        body = _json_bytes(value)
+    def _send(self, value, status=200, content_type="application/json; charset=utf-8", bootstrap=False):
+        body = value if isinstance(value, bytes) else canonical_json(value).encode("utf-8")
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+        if bootstrap:
+            self.send_header("Set-Cookie", f"{self.server.cookie_name}={self.server.token}; HttpOnly; SameSite=Strict; Path=/")
         self.end_headers()
         self.wfile.write(body)
 
-    def _body(self) -> dict[str, Any]:
-        length = int(self.headers.get("Content-Length", "0"))
-        if length > 2_000_000:
-            raise ValueError("提交的数据过大")
-        value = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
-        if not isinstance(value, dict):
-            raise ValueError("请求正文必须是JSON对象")
-        return value
-
-    def _require_token(self) -> bool:
-        if self.headers.get("X-GPT56-Session") != self.server.state.token:
-            self._send_json({"error": "本地会话令牌无效，请刷新页面"}, 403)
-            return False
+    def _check(self, authenticated=True):
+        port = self.server.server_port
+        allowed = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        if self.headers.get("Host") not in allowed:
+            raise AppError("invalid_host", status=403)
         origin = self.headers.get("Origin")
-        if origin and urlsplit(origin).hostname not in {"127.0.0.1", "localhost"}:
-            self._send_json({"error": "已拒绝跨站请求"}, 403)
-            return False
-        return True
+        if origin and origin not in {f"http://{host}" for host in allowed}:
+            raise AppError("invalid_origin", status=403)
+        if authenticated:
+            cookie = SimpleCookie()
+            cookie.load(self.headers.get("Cookie", ""))
+            candidate = self.headers.get("X-Meow-Token") or (cookie[self.server.cookie_name].value if self.server.cookie_name in cookie else "")
+            if not secrets.compare_digest(candidate, self.server.token):
+                raise AppError("session_token_required", status=403)
 
-    def do_GET(self) -> None:
-        path = urlsplit(self.path).path
-        if path == "/api/health":
-            self._send_json({"status": "ok", "binding": "127.0.0.1", "state_transport": "polling"})
-            return
-        if path in {"/api/bootstrap", "/api/presets"}:
-            catalog = preset_catalog()
-            self._send_json({
-                "session_token": self.server.state.token,
-                **catalog,
-                "pending_custom_probe": self.server.state.pending_custom_probe,
-                "probe_catalog": [
-                    {"id": "juice_high", "name": "Juice high", "type": "Juice", "description": "逐条先匹配申报型号，再匹配其他已知型号；共享值优先算申报型号成功。"},
-                    {"id": "output_integrity", "name": "32/48 输出完整性", "type": "防改写", "description": "精确返回 32/48 为通过；只有被改成 40 或 40 开头纯数字时才硬报警，其他输出只记无效证据。"},
-                    {"id": "juice_coverage", "name": "显式 N 覆盖", "type": "防覆盖", "description": "仅针对把 Sol high 伪装成 40/40xxx 的 Juice 隐藏覆盖：显式定义 N 后检查是否仍被改回已知指纹。"},
-                ] + _probability_probe_catalog(),
-            })
-            return
-        if path == "/api/detector/status":
-            self._send_json(self.server.state.safe_status("detector"))
-            return
-        if path == "/api/generator/status":
-            self._send_json(self.server.state.safe_status("generator"))
-            return
-        if path == "/api/detector/report":
-            store = self.server.state.current_detector_store()
-            status = self.server.state.safe_status("detector")
-            session_id = status.get("session_id")
-            if store is None or not session_id:
-                self._send_json({"error": "当前没有可读取的检测报告"}, 404)
-                return
-            report = store.report(str(session_id))
-            self._send_json(report if report is not None else {"error": "当前检测报告尚未生成"}, 200 if report is not None else 404)
-            return
-        if path == "/api/generator/export":
-            output = self.server.state.generator.get("output")
-            if not output:
-                self._send_json({"error": "当前没有可下载的探针文件"}, 404)
-                return
-            file_path = Path(output).resolve()
-            root = self.server.state.runs_root.resolve()
-            if not file_path.is_file() or not file_path.is_relative_to(root):
-                self._send_json({"error": "导出文件路径不在允许的本地运行目录内"}, 403)
-                return
-            body = file_path.read_bytes()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Disposition", f'attachment; filename="{file_path.name}"')
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        self._serve_static(path)
-
-    def _serve_static(self, path: str) -> None:
-        mapping = {"/": "index.html", "/generator": "generator.html"}
-        name = mapping.get(path, path.removeprefix("/assets/")) if path.startswith("/assets/") or path in mapping else None
-        if not name or ".." in name:
-            self.send_error(404)
-            return
-        file_path = WEB_ROOT / name
-        if not file_path.exists():
-            self.send_error(404)
-            return
-        body = file_path.read_bytes()
-        content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
-        self.send_response(200)
-        self.send_header("Content-Type", content_type + ("; charset=utf-8" if content_type.startswith(("text/", "application/javascript")) else ""))
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_POST(self) -> None:
-        if not self._require_token():
-            return
-        path = urlsplit(self.path).path
+    def do_GET(self):
         try:
-            body = self._body()
-            if path == "/api/detector/estimate":
-                config = normalize_config(body["config"])
-                self._send_json(estimate_plan(config))
-            elif path == "/api/detector/start":
-                self._start_detector(body)
-            elif path == "/api/detector/stop":
-                self._stop_detector()
-            elif path == "/api/generator/start":
-                self._start_generator(body)
-            elif path == "/api/generator/stop":
-                self._stop_generator()
-            elif path == "/api/generator/analyze":
-                self._analyze_generator(body)
-            elif path == "/api/probe/verify":
-                probe = probe_document(body if "probe_file_json" in body else body["probe"])
-                verify_probe_file(probe)
-                self._send_json({"valid": True, "probe_id": probe["probe_identity"]["probe_id"]})
-            elif path == "/api/probe/use-generated":
-                self._use_generated_probe()
-            else:
-                self._send_json({"error": "接口不存在"}, 404)
-        except RetentionWriteError as exc:
-            self._send_json({"error": _safe_exception_message(exc), "error_type": "retention_path_not_writable"}, 400)
-        except (KeyError, TypeError, ValueError) as exc:
-            self._send_json({"error": _safe_exception_message(exc)}, 400)
-        except Exception as exc:
-            self._send_json({"error": _safe_exception_message(exc)}, 500)
-
-    def _start_detector(self, body: dict[str, Any]) -> None:
-        base_url = normalize_api_base_url(str(body["base_url"]))
-        claimed_model = str(body.get("claimed_model") or body.get("model") or "gpt-5.6-sol").strip()
-        request_model = str(body.get("request_model") or claimed_model).strip()
-        config = normalize_config(body["config"])
-        for custom_probe in config.get("custom_probes", []):
-            verify_probe_file(probe_document(custom_probe))
-        with self.server.state.lock:
-            current = self.server.state.safe_status("detector")
-            if current.get("status") in {"running", "stopping"}:
-                raise ValueError("detector is already running or stopping")
-            resume_session_id = str(body.get("resume_session_id") or "")
-            if not resume_session_id and current.get("status") == "interrupted" and current.get("resume_config_valid", True):
-                resume_session_id = str(current.get("session_id") or "")
-            run_dir: Path
-            if resume_session_id:
-                store = self.server.state.current_detector_store()
-                persisted = store.session(resume_session_id) if store is not None else None
-                if persisted is None or persisted.get("status") != "interrupted":
-                    raise ValueError("requested detector session is not resumable")
-                if persisted.get("config_hash") != config["config_hash"]:
-                    raise ValueError("resume config does not match the frozen session")
-                if persisted.get("claimed_model") != claimed_model:
-                    raise ValueError("resume claimed model does not match the frozen session")
-                if (persisted.get("request_model") or persisted.get("claimed_model")) != request_model:
-                    raise ValueError("resume request model does not match the frozen session")
-                if persisted.get("safe_endpoint") != _safe_endpoint(base_url):
-                    raise ValueError("resume endpoint does not match the frozen session")
-                session_id = resume_session_id
-                run_dir = self.server.state.detector_run_dir or self.server.state.runs_root / "detector" / f"session-{session_id}"
-            else:
-                session_id = secrets.token_hex(8)
-                run_dir = self.server.state.runs_root / "detector" / f"session-{session_id}"
-            old_session = self.server.state.detector_session
-            old_store = self.server.state.detector_store
-            if old_session is not None:
-                old_session.close()
-            elif old_store is not None:
-                old_store.close()
-            self.server.state.detector_session = None
-            self.server.state.detector_store = None
-            config["session_id"] = session_id
-            session = DetectorSession(
-                base_url=base_url,
-                claimed_model=claimed_model,
-                request_model=request_model,
-                api_key=body["api_key"],
-                config=config,
-                directory=run_dir,
-                retention_enabled=bool(body.get("retention_enabled")),
-                retention_directory=body.get("retention_directory"),
-            )
-            self.server.state.detector_session = session
-            self.server.state.detector_run_dir = run_dir
-            self.server.state.detector = {
-                "status": "running",
-                "session_id": session_id,
-                "updated_at": utc_now(),
-                "mode": config["mode"],
-                "preset": config["preset"],
-                "official": config["official"],
-                "config_hash": config["config_hash"],
-            }
-
-        def target() -> None:
-            try:
-                report = session.run_single() if config["mode"] == "single" else session.run_continuous()
-                final_status = "stopped" if report.get("run_stopped") else "complete"
-                status = {
-                    "status": final_status,
-                    "session_id": session_id,
-                    "updated_at": utc_now(),
-                    "verdict": report["overall_verdict"],
-                    "report_available": True,
-                }
-            except Exception as exc:
+            path = urlsplit(self.path).path
+            self._check(authenticated=path not in ASSETS and path != "/api/bootstrap")
+            if path in ASSETS:
+                name, content_type = ASSETS[path]
+                self._send((WEB_ROOT / name).read_bytes(), content_type=content_type, bootstrap=path == "/")
+            elif path == "/api/bootstrap":
+                self._send({"token": self.server.token, "version": "4.5.0", "locale": self.server.state.locale, "seed_pool": seed_summary(), "tier_defaults": DEFAULT_TIER_COUNTS}, bootstrap=True)
+            elif path == "/api/snapshot":
+                self._send(self.server.state.snapshot())
+            elif path == "/api/status":
+                self._send(self.server.state.status())
+            elif path == "/api/simulations":
+                self._send(self.server.state.store.documents("simulation_task"))
+            elif path.startswith("/api/simulation/"):
+                identity = path.removeprefix("/api/simulation/")
+                state = self.server.state
+                task = state.calibration if (state.calibration or {}).get("id") == identity else state.store.document("simulation_task", identity)
+                if not task:
+                    raise AppError("simulation_result_not_found", status=404)
+                self._send(task)
+            elif path.startswith("/api/retention/"):
+                identity = path.removeprefix("/api/retention/")
+                if not self.server.state.store.session(identity):
+                    raise AppError("session_not_found", status=404)
+                after = integer(int(parse_qs(urlsplit(self.path).query).get("after", ["0"])[0]), "after", 0, 2 ** 63 - 1)
+                self._send(self.server.state.store.retained_exchanges(identity, after))
+            elif path.startswith("/api/report/"):
+                identity = path.removeprefix("/api/report/")
+                report = self.server.state.store.report(identity)
+                if identity in self.server.state.active:
+                    report = self.server.state.active[identity][0].report()
+                if not report:
+                    raise AppError("report_not_found", status=404)
+                self._send(report)
+            elif path.startswith("/api/progress/"):
                 try:
-                    session.store.update_session_status(session_id, "error")
-                except RuntimeError:
-                    pass
-                status = {
-                    "status": "error",
-                    "session_id": session_id,
-                    "updated_at": utc_now(),
-                    "error": _safe_exception_message(exc),
-                }
-            with self.server.state.lock:
-                if self.server.state.detector_session is session and self.server.state.detector.get("session_id") == session_id:
-                    self.server.state.detector = self.server.state._status_from_store(session.store, session_id)
-
-        worker = threading.Thread(target=target, daemon=True, name=f"detector-{session_id}")
-        with self.server.state.lock:
-            self.server.state.detector_thread = worker
-        worker.start()
-        self._send_json({"started": True, "session_id": session_id, "official": config["official"], "config_hash": config["config_hash"]})
-
-    def _stop_detector(self) -> None:
-        result = {
-            "accepted": False,
-            "stopping": False,
-            "session_id": None,
-            "previous_status": "idle",
-            "current_status": "idle",
-            "stop_requested_at": None,
-            "active_requests_cancelled": 0,
-        }
-        with self.server.state.lock:
-            session = self.server.state.detector_session
-            if session is not None and self.server.state.detector.get("status") == "running":
-                result = session.stop()
-                result["stopping"] = True
-                self.server.state.detector = {**self.server.state.detector, "status": "stopping", "updated_at": utc_now()}
-            elif session is not None:
-                result.update({
-                    "session_id": session.session_id,
-                    "previous_status": self.server.state.detector.get("status", "unknown"),
-                    "current_status": self.server.state.detector.get("status", "unknown"),
-                })
-        self._send_json(result)
-
-    def _start_generator(self, body: dict[str, Any]) -> None:
-        base_url = normalize_api_base_url(str(body["base_url"]))
-        with self.server.state.lock:
-            if self.server.state.generator.get("status") in {"running", "stopping"}:
-                raise ValueError("generator is already running or stopping")
-            if self.server.state.generator_session is not None:
-                self.server.state.generator_session.close()
-                self.server.state.generator_session = None
-            value = dict(body["plan"])
-            for key in ("request_formats", "context_modes", "tags"):
-                if key in value:
-                    value[key] = tuple(value[key])
-            plan = GeneratorPlan(**value)
-            plan.validate()
-            resume_session_id = str(body.get("resume_session_id") or "")
-            current = self.server.state.safe_status("generator")
-            if not resume_session_id and current.get("status") == "interrupted":
-                resume_session_id = str(current.get("session_id") or "")
-            if resume_session_id:
-                store = self.server.state.current_generator_store()
-                persisted = store.session(resume_session_id) if store is not None else None
-                if persisted is None or persisted.get("status") != "interrupted":
-                    raise ValueError("requested generator session is not resumable")
-                plan_hash = hashlib.sha256(canonical_json(plan.to_public_dict()).encode("utf-8")).hexdigest()
-                if persisted.get("config_hash") != plan_hash:
-                    raise ValueError("resume plan does not match the frozen generator session")
-                if persisted.get("safe_endpoint") and persisted.get("safe_endpoint") != _safe_endpoint(base_url):
-                    raise ValueError("resume endpoint does not match the frozen generator session")
-                session_id = resume_session_id
-                run_dir = self.server.state.generator_run_dir or self.server.state.runs_root / "generator" / f"session-{session_id}"
+                    self._send(self.server.state.store.progress(path.removeprefix("/api/progress/")))
+                except KeyError:
+                    raise AppError("session_not_found", status=404)
             else:
-                session_id = secrets.token_hex(8)
-                run_dir = self.server.state.runs_root / "generator" / f"session-{session_id}"
-            detached = self.server.state.generator_store
-            if detached is not None:
-                detached.close()
-            self.server.state.generator_store = None
-            session = ProbeGeneratorSession(
-                plan, run_dir, session_id=session_id, safe_endpoint=_safe_endpoint(base_url),
-            )
-            self.server.state.generator_session = session
-            self.server.state.generator_run_dir = run_dir
-            self.server.state.generator = {"status": "running", "session_id": session_id, "updated_at": utc_now(), "probe_id": plan.probe_id}
-        api_key = str(body["api_key"])
-        local = threading.local()
-        transports: list[StreamingTransport] = []
-        transport_lock = threading.Lock()
+                raise AppError("not_found", status=404)
+        except AppError as exc:
+            self._send({"error": exc.public()}, exc.status)
+        except RequestError as exc:
+            self._send({"error": exc.public()}, 502)
+        except (OSError, ValueError):
+            self._send({"error": {"code": "not_found"}}, 404)
 
-        def request(job: dict[str, Any], messages: list[dict[str, str]]) -> dict[str, Any]:
-            if not hasattr(local, "transport"):
-                local.transport = StreamingTransport(
-                    base_url,
-                    api_key,
-                    timeout=300 if job["context_mode"] == "fixed_32k_history" or job["request_format"] == "native_codex" else 180,
-                    cancellation=session.cancellation,
-                )
-                with transport_lock:
-                    transports.append(local.transport)
-            result = local.transport.post(
-                model=job["upstream_model"],
-                messages=messages,
-                effort=job["effort"],
-                request_format=job["request_format"],
-                context_mode=job["context_mode"],
-                cache_key=job["job_id"],
-                job_id=job["job_id"],
-                session_id=session_id,
-            )
-            return {"answer": result.answer, "streaming": True, "http_status": result.meta.get("http_status"), "usage": result.response.get("usage")}
-
-        def target() -> None:
-            nonlocal api_key
-            try:
-                progress = session.run(request)
-                final_status = str(progress.pop("status", "error"))
-                error = progress.pop("error", None)
-                status = {"status": final_status, "session_id": session_id, "updated_at": utc_now(), **progress}
-                if error:
-                    status["error"] = error
-            except Exception as exc:
-                status = {"status": "error", "session_id": session_id, "updated_at": utc_now(), "error": _safe_exception_message(exc)}
-            finally:
-                api_key = ""
-                with transport_lock:
-                    for transport in transports:
-                        transport.api_key = ""
-                    transports.clear()
-            with self.server.state.lock:
-                if self.server.state.generator_session is session and self.server.state.generator.get("session_id") == session_id:
-                    self.server.state.generator = status
-
-        worker = threading.Thread(target=target, daemon=True, name=f"generator-{session_id}")
-        with self.server.state.lock:
-            self.server.state.generator_thread = worker
-        worker.start()
-        self._send_json({"started": True, "session_id": session_id})
-
-    def _stop_generator(self) -> None:
-        result = {
-            "accepted": False,
-            "stopping": False,
-            "session_id": None,
-            "previous_status": "idle",
-            "current_status": "idle",
-            "stop_requested_at": None,
-            "active_requests_cancelled": 0,
-        }
-        with self.server.state.lock:
-            session = self.server.state.generator_session
-            current_status = self.server.state.generator.get("status", "idle")
-            if session is not None and current_status == "running":
-                result = session.stop()
-                result["stopping"] = True
-                self.server.state.generator = {
-                    **self.server.state.generator,
-                    "status": "stopping",
-                    "updated_at": utc_now(),
-                }
-            elif session is not None:
-                result.update({
-                    "session_id": session.session_id,
-                    "previous_status": current_status,
-                    "current_status": current_status,
-                })
-        self._send_json(result)
-
-    def _analyze_generator(self, body: dict[str, Any]) -> None:
-        session = self.server.state.generator_session
-        if session is None:
-            store = self.server.state.current_generator_store()
-            status = self.server.state.safe_status("generator")
-            session_id = str(status.get("session_id") or "")
-            persisted = store.session(session_id) if store is not None and session_id else None
-            if persisted is None or persisted.get("status") not in {"collected", "complete"}:
-                raise ValueError("generator session unavailable")
-            plan_value = dict(persisted["config"])
-            for key in ("request_formats", "context_modes", "tags"):
-                if key in plan_value:
-                    plan_value[key] = tuple(plan_value[key])
-            plan = GeneratorPlan(**plan_value)
-            if store is not None:
-                store.close()
-            self.server.state.generator_store = None
-            session = ProbeGeneratorSession(
-                plan,
-                self.server.state.generator_run_dir or self.server.state.runs_root / "generator" / f"session-{session_id}",
-                session_id=session_id,
-                safe_endpoint=persisted.get("safe_endpoint"),
-                activate=False,
-            )
-            self.server.state.generator_session = session
-        output = Path(body.get("output") or session.directory / f"{session.plan.probe_id}.gpt56probe.json")
-        export = session.analyze_and_export(output)
-        session.store.update_session_status(session.session_id, "complete")
-        with self.server.state.lock:
-            if self.server.state.generator_session is session:
-                self.server.state.generator = {
-                    **self.server.state.generator,
-                    "status": "complete",
-                    "updated_at": utc_now(),
-                    "output": str(output),
-                    "analysis": {"reference_ready": export["reference_ready"]},
-                }
-        self._send_json({"complete": True, "output": str(output), "probe": export})
-
-    def _use_generated_probe(self) -> None:
-        output = self.server.state.generator.get("output")
-        if not output:
-            raise ValueError("当前没有可导出的探针结果")
-        file_path = Path(output).resolve()
-        root = self.server.state.runs_root.resolve()
-        if not file_path.is_file() or not file_path.is_relative_to(root):
-            raise ValueError("generator export path rejected")
-        probe = json.loads(file_path.read_text(encoding="utf-8"))
-        verify_probe_file(probe)
-        with self.server.state.lock:
-            self.server.state.pending_custom_probe = wrap_probe_file(probe)
-        self._send_json({"ready": True, "probe_id": probe["probe_identity"]["probe_id"]})
+    def do_POST(self):
+        try:
+            raw_length = self.headers.get("Content-Length", "")
+            if not raw_length.isascii() or not raw_length.isdecimal() or not 0 < int(raw_length) <= MAX_PACKAGE_BYTES:
+                raise AppError("invalid_content_length", status=413)
+            self.connection.settimeout(10)
+            raw = self.rfile.read(int(raw_length))
+            if len(raw) != int(raw_length):
+                raise AppError("incomplete_request")
+            self._check()
+            body = strict_json_loads(raw)
+            if not isinstance(body, dict):
+                raise AppError("invalid_request")
+            path = urlsplit(self.path).path
+            state = self.server.state
+            if path == "/api/run/start":
+                result = {"session_id": state.call(state.start_run("detection", body))}
+            elif path == "/api/collection/start":
+                result = {"session_id": state.call(state.start_run("collection", body))}
+            elif path == "/api/collection/profile":
+                provider = recognized_provider(normalize_api_base_url(body.get("base_url", "")))
+                result = {"provider": provider, "max_in_flight": 4 if provider == "openrouter" else None}
+            elif path == "/api/candidates/generate":
+                result = state.call(state.generate(body), timeout=130)
+            elif path == "/api/run/stop":
+                result = state.call(state.stop_run(body.get("session_id")))
+            elif path == "/api/run/estimate":
+                package = state.catalog.get(body.get("package_id"), body.get("package_version"))
+                result = estimate_plan(package, body.get("tier", "low"), runtime_options(body.get("runtime", {}))["retries"])
+            elif path == "/api/project/save":
+                result = normalize_project(body.get("project"), draft=True)
+                selected = body.get("selected", body.get("project", {}).get("selected"))
+                if selected is not None:
+                    if not isinstance(selected, list) or len(set(selected)) != len(selected) or set(selected) - {probe["id"] for probe in result["probes"]}:
+                        raise AppError("invalid_selection")
+                    result["selected"] = selected
+                state.store.put_document("project", result["id"], result)
+            elif path == "/api/project/collections":
+                result = state.collection_history(body.get("project"))
+            elif path == "/api/project/similar":
+                result = similar_probes(normalize_project(body.get("project"), draft=True))
+            elif path == "/api/project/delete":
+                state.store.delete_document("project", body.get("id"))
+                result = {"deleted": True}
+            elif path == "/api/endpoint/save":
+                result = state.presets.save(body.get("preset"), body.get("key"))
+            elif path == "/api/endpoint/delete":
+                state.presets.delete(body.get("id"))
+                result = {"deleted": True}
+            elif path == "/api/catalog/refresh":
+                result = state.call(state.catalog.refresh(), timeout=70)
+            elif path == "/api/program/check-update":
+                result = state.call(state.updates.check(body.get("locale", state.locale)), timeout=40)
+            elif path == "/api/program/download-update":
+                if body.get("confirmed") is not True:
+                    raise AppError("update_download_confirmation_required")
+                result = state.call(state.updates.download(body.get("version"), body.get("locale", state.locale)), timeout=310)
+            elif path == "/api/catalog/install":
+                result = state.call(state.catalog.install(body.get("id"), body.get("version")), timeout=40)
+            elif path == "/api/package/import":
+                result = state.catalog.install_local(body.get("package"))
+            elif path == "/api/package/export":
+                result = state.catalog.get(body.get("id"), body.get("version"))
+            elif path == "/api/selection":
+                reports = [state.store.report(identity) for identity in body.get("session_ids", [])]
+                result = analyze_reports(reports, body.get("project"), body.get("options"))
+            elif path == "/api/simulation/start":
+                result = state.call(state.simulate(body))
+            elif path in {"/api/simulation/export", "/api/simulation/install"}:
+                package = state.store.document("simulation_result", body.get("id"))
+                if not package:
+                    raise AppError("simulation_result_not_found", status=404)
+                if body.get("version"):
+                    package["version"] = body["version"]
+                    package = build_package(package, package["observations"], collection=package["collection"],
+                        calibration=package["calibration"], validation=package["validation"])
+                result = state.catalog.install_local(package) if path.endswith("install") else package
+            elif path == "/api/simulation/stop":
+                if hasattr(state, "calibration_cancel") and body.get("id") == (state.calibration or {}).get("id"):
+                    state.calibration_cancel.set()
+                result = {"stopping": True}
+            elif path == "/api/schedule/start":
+                state.call(state.start_schedule(body))
+                result = {"started": True}
+            elif path == "/api/schedule/pause":
+                state.loop.call_soon_threadsafe(state.schedule.pause)
+                result = {"paused": True}
+            elif path == "/api/schedule/delete":
+                result = state.call(state.delete_schedule())
+            else:
+                raise AppError("not_found", status=404)
+            self._send(result)
+        except AppError as exc:
+            self._send({"error": exc.public()}, exc.status)
+        except RequestError as exc:
+            self._send({"error": exc.public()}, 502)
+        except (TimeoutError, FutureTimeout):
+            self._send({"error": {"code": "operation_timeout"}}, 504)
+        except Exception:
+            self._send({"error": {"code": "operation_failed"}}, 500)
 
 
 class AppServer(ThreadingHTTPServer):
-    def __init__(self, address: tuple[str, int], state: AppState):
+    daemon_threads = True
+
+    def __init__(self, address, state):
+        self.state, self.token = state, secrets.token_urlsafe(32)
+        self._slots = threading.BoundedSemaphore(32)
         super().__init__(address, Handler)
-        self.state = state
+        self.cookie_name = f"meow_session_{self.server_port}"
 
-    def server_close(self) -> None:
-        with self.state.lock:
-            detector = self.state.detector_session
-            detector_thread = self.state.detector_thread
-            detached_detector_store = self.state.detector_store
-            generator = self.state.generator_session
-            generator_thread = self.state.generator_thread
-            detached_generator_store = self.state.generator_store
-            detector_status = str(self.state.detector.get("status") or "idle")
-            generator_status = str(self.state.generator.get("status") or "idle")
-        for session, status, worker in (
-            (detector, detector_status, detector_thread),
-            (generator, generator_status, generator_thread),
-        ):
-            if session is not None and (status in {"running", "stopping", "interrupted"} or bool(worker and worker.is_alive())):
-                try:
-                    session.stop()
-                except RuntimeError:
-                    pass
-        for worker in (detector_thread, generator_thread):
-            if worker is not None and worker is not threading.current_thread():
-                worker.join(timeout=15)
-        for session in (detector, generator):
-            if session is not None:
-                try:
-                    session.close()
-                except RuntimeError:
-                    pass
-        if detached_detector_store is not None:
-            try:
-                detached_detector_store.close()
-            except RuntimeError:
-                pass
-        if detached_generator_store is not None:
-            try:
-                detached_generator_store.close()
-            except RuntimeError:
-                pass
+    def process_request(self, request, client_address):
+        if not self._slots.acquire(blocking=False):
+            request.close()
+            return
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request, client_address):
+        try:
+            request.settimeout(10)
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+    def server_close(self):
         super().server_close()
+        self.state.close()
 
 
-def create_server(*, port: int = 0, runs_root: str | Path | None = None) -> AppServer:
-    state = AppState(Path(runs_root or Path.cwd() / "gpt56_vnext_runs"))
-    return AppServer(("127.0.0.1", port), state)
-
-
-__all__ = ["AppServer", "AppState", "create_server"]
+def create_server(*, port=0, runs_root=None, locale="zh-CN"):
+    root = Path(runs_root) if runs_root else Path(__file__).resolve().parent.parent / "meow_runs"
+    state = AppState(root, locale)
+    try:
+        return AppServer(("127.0.0.1", port), state)
+    except Exception:
+        state.close()
+        raise

@@ -31,6 +31,7 @@ class SQLiteStateStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._queue: queue.Queue[_WriteCall | None] = queue.Queue()
         self._closed = False
+        self._lifecycle_lock = threading.Lock()
         self._writer = threading.Thread(
             target=self._writer_main,
             daemon=True,
@@ -54,6 +55,13 @@ class SQLiteStateStore:
             CREATE TABLE IF NOT EXISTS metadata (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS documents (
+                kind TEXT NOT NULL,
+                id TEXT NOT NULL,
+                body_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(kind,id)
             );
             CREATE TABLE IF NOT EXISTS sessions (
                 session_id TEXT PRIMARY KEY,
@@ -120,15 +128,9 @@ class SQLiteStateStore:
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (session_id) REFERENCES sessions(session_id)
             );
-            CREATE TABLE IF NOT EXISTS sticky_alerts (
-                alert_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                dedupe_key TEXT NOT NULL,
-                title TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                UNIQUE (session_id, dedupe_key),
-                FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+            CREATE TABLE IF NOT EXISTS retained_exchanges (
+                attempt_id INTEGER PRIMARY KEY REFERENCES attempts(attempt_id),
+                body_json TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_jobs_session_cycle ON jobs(session_id, cycle, ordinal);
             CREATE INDEX IF NOT EXISTS idx_attempts_session_job ON attempts(session_id, job_id, attempt_no);
@@ -165,11 +167,14 @@ class SQLiteStateStore:
             connection.close()
 
     def _write(self, callback: Callable[[sqlite3.Connection], T]) -> T:
-        if self._closed:
-            raise RuntimeError("state store is closed")
         call = _WriteCall(callback=callback, completed=threading.Event())
-        self._queue.put(call)
-        call.completed.wait()
+        with self._lifecycle_lock:
+            if self._closed:
+                raise RuntimeError("state store is closed")
+            self._queue.put(call)
+        while not call.completed.wait(0.1):
+            if not self._writer.is_alive():
+                raise RuntimeError("state writer unavailable")
         if call.error is not None:
             raise call.error
         return call.result
@@ -178,7 +183,9 @@ class SQLiteStateStore:
         connection = sqlite3.connect(self.path, timeout=30)
         connection.row_factory = sqlite3.Row
         try:
-            self._configure(connection)
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("PRAGMA busy_timeout=5000")
+            connection.execute("BEGIN")
             return callback(connection)
         finally:
             connection.close()
@@ -241,13 +248,16 @@ class SQLiteStateStore:
 
         return self._read(read)
 
-    def latest_session_id(self, kind: str) -> str | None:
-        return self._read(lambda connection: (
-            lambda row: str(row[0]) if row else None
-        )(connection.execute(
-            "SELECT session_id FROM sessions WHERE kind=? ORDER BY created_at DESC LIMIT 1",
-            (kind,),
-        ).fetchone()))
+    def interrupt_active_sessions(self) -> None:
+        """Only the owning application calls this once at startup."""
+        self._write(lambda connection: connection.execute(
+            "UPDATE sessions SET status='paused',updated_at=?, "
+            "report_json=CASE WHEN report_json IS NULL THEN NULL "
+            "WHEN kind='collection' THEN json_set(report_json,'$.progress.status','paused') "
+            "ELSE json_set(report_json,'$.operational_status','paused','$.progress.status','paused') END "
+            "WHERE kind IN ('detection','collection') AND status IN ('prepared','running','stopping')",
+            (utc_now(),),
+        ))
 
     def update_session_status(self, session_id: str, status: str, *, clear_stop: bool = False) -> None:
         now = utc_now()
@@ -292,8 +302,7 @@ class SQLiteStateStore:
                     if not job_id:
                         raise ValueError("job_id is required before freezing a manifest")
                     manifest_json = canonical_json(job)
-                    import hashlib
-                    manifest_hash = hashlib.sha256(manifest_json.encode("utf-8")).hexdigest()
+                    manifest_hash = ""  # Legacy NOT NULL column; manifest_json is the authority.
                     connection.execute(
                         "INSERT INTO jobs(session_id,job_id,cycle,ordinal,manifest_json,manifest_hash,status,frozen_at,updated_at) "
                         "VALUES(?,?,?,?,?,?,'pending',?,?)",
@@ -316,15 +325,6 @@ class SQLiteStateStore:
                 (session_id, cycle),
             )
         ])
-
-    def cycles(self, session_id: str) -> list[int]:
-        return self._read(lambda connection: [int(row[0]) for row in connection.execute(
-            "SELECT cycle FROM ("
-            "SELECT DISTINCT cycle AS cycle FROM jobs WHERE session_id=? "
-            "UNION SELECT DISTINCT cycle AS cycle FROM events WHERE session_id=? AND cycle IS NOT NULL"
-            ") ORDER BY cycle",
-            (session_id, session_id),
-        )])
 
     def pending_jobs(self, session_id: str, cycle: int | None = None, *, max_attempts: int | None = None) -> list[dict[str, Any]]:
         def read(connection: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -372,6 +372,33 @@ class SQLiteStateStore:
             (session_id, job_id),
         ).fetchone()[0]))
 
+    def reopen_parser_error(self, session_id: str, job_id: str, *, max_attempts: int) -> bool:
+        """Explicit repair of a parser failure; preserve attempts and its old result."""
+        def write(connection: sqlite3.Connection) -> bool:
+            def transaction() -> bool:
+                row = connection.execute(
+                    "SELECT j.status,j.final_result_id,r.result_json FROM jobs j "
+                    "LEFT JOIN results r ON r.result_id=j.final_result_id WHERE j.session_id=? AND j.job_id=?",
+                    (session_id, job_id),
+                ).fetchone()
+                if row is None or row["status"] != "error" or not row["result_json"]:
+                    return False
+                result = json.loads(row["result_json"])
+                if result.get("error", {}).get("code") != "invalid_stream":
+                    return False
+                count = connection.execute("SELECT COUNT(*) FROM attempts WHERE session_id=? AND job_id=?",
+                                           (session_id, job_id)).fetchone()[0]
+                if count >= max_attempts:
+                    return False
+                connection.execute("INSERT INTO events(session_id,event_type,payload_json,created_at) VALUES(?,?,?,?)",
+                    (session_id, "parser_error_reopened", canonical_json({"job_id": job_id,
+                     "historical_result_id": row["final_result_id"], "attempts_already_used": count}), utc_now()))
+                connection.execute("UPDATE jobs SET status='pending',final_result_id=NULL,updated_at=? WHERE session_id=? AND job_id=?",
+                                   (utc_now(), session_id, job_id))
+                return True
+            return self._transaction(connection, transaction)
+        return self._write(write)
+
     def finish_attempt(
         self,
         *,
@@ -384,6 +411,7 @@ class SQLiteStateStore:
         safe_message: str,
         final_result: dict[str, Any] | None = None,
         final_job_status: str | None = None,
+        exchange: dict[str, Any] | None = None,
     ) -> int | None:
         now = utc_now()
 
@@ -403,6 +431,9 @@ class SQLiteStateStore:
                     "UPDATE attempts SET completed_at=?,status=?,stage=?,category=?,retryable=?,http_status=?,safe_message=? WHERE attempt_id=?",
                     (now, status, stage, category, int(retryable), http_status, safe_message, attempt_id),
                 )
+                if exchange is not None:
+                    connection.execute("INSERT INTO retained_exchanges(attempt_id,body_json) VALUES(?,?)",
+                                       (attempt_id, canonical_json(exchange)))
                 if final_result is None:
                     return None
                 result_status = str(final_job_status or final_result.get("status") or "error")
@@ -428,6 +459,14 @@ class SQLiteStateStore:
 
         def write(connection: sqlite3.Connection) -> int:
             def transaction() -> int:
+                job = connection.execute(
+                    "SELECT status,final_result_id FROM jobs WHERE session_id=? AND job_id=?",
+                    (session_id, job_id),
+                ).fetchone()
+                if job is None:
+                    raise KeyError(job_id)
+                if job["status"] != "pending":
+                    return int(job["final_result_id"] or 0)
                 cursor = connection.execute(
                     "INSERT INTO results(session_id,job_id,status,result_json,created_at) VALUES(?,?,?,?,?)",
                     (session_id, job_id, status, canonical_json(result), now),
@@ -440,33 +479,6 @@ class SQLiteStateStore:
                 return result_id
 
             return self._transaction(connection, transaction)
-
-        return self._write(write)
-
-    def record_cancelled(self, session_id: str, job_id: str, result: dict[str, Any]) -> int:
-        return self.record_terminal_result(session_id, job_id, "cancelled", result)
-
-    def cancel_running_attempts(self, session_id: str, job_ids: set[str], *, category: str) -> int:
-        if not job_ids:
-            return 0
-        now = utc_now()
-
-        def write(connection: sqlite3.Connection) -> int:
-            placeholders = ",".join("?" for _ in job_ids)
-            cursor = connection.execute(
-                f"UPDATE attempts SET completed_at=?,status='cancelled',stage='transport',category=?,"
-                "retryable=0,safe_message=? WHERE session_id=? AND status='running' "
-                f"AND job_id IN ({placeholders})",
-                (
-                    now,
-                    category,
-                    "用户已停止检测，仍在途的请求已取消",
-                    session_id,
-                    *sorted(job_ids),
-                ),
-            )
-            connection.commit()
-            return int(cursor.rowcount)
 
         return self._write(write)
 
@@ -503,6 +515,7 @@ class SQLiteStateStore:
                         continue
                     manifest = json.loads(row["manifest_json"])
                     result = {
+                        **manifest,
                         "job_id": row["job_id"],
                         "probe_id": manifest.get("probe_id"),
                         "request_format": manifest.get("request_format"),
@@ -587,27 +600,6 @@ class SQLiteStateStore:
 
         return self._read(read)
 
-    def add_sticky_alert(self, session_id: str, dedupe_key: str, title: str, payload: dict[str, Any]) -> None:
-        now = utc_now()
-        self._write(lambda connection: connection.execute(
-            "INSERT OR IGNORE INTO sticky_alerts(session_id,dedupe_key,title,payload_json,created_at) VALUES(?,?,?,?,?)",
-            (session_id, dedupe_key, title, canonical_json(payload), now),
-        ))
-
-    def sticky_alerts(self, session_id: str) -> list[dict[str, Any]]:
-        return self._read(lambda connection: [
-            {
-                "dedupe_key": row["dedupe_key"],
-                "title": row["title"],
-                "time": row["created_at"],
-                **json.loads(row["payload_json"]),
-            }
-            for row in connection.execute(
-                "SELECT dedupe_key,title,payload_json,created_at FROM sticky_alerts WHERE session_id=? ORDER BY alert_id",
-                (session_id,),
-            )
-        ])
-
     def save_report(self, session_id: str, report: dict[str, Any]) -> None:
         now = utc_now()
         self._write(lambda connection: connection.execute(
@@ -622,43 +614,58 @@ class SQLiteStateStore:
 
         return self._read(read)
 
-    def progress(self, session_id: str) -> dict[str, Any]:
-        def read(connection: sqlite3.Connection) -> dict[str, Any]:
-            session = connection.execute(
-                "SELECT status,updated_at,stop_requested_at FROM sessions WHERE session_id=?",
+    @staticmethod
+    def _progress(connection: sqlite3.Connection, session_id: str) -> dict:
+        session = connection.execute(
+            "SELECT status,updated_at,stop_requested_at FROM sessions WHERE session_id=?",
+            (session_id,),
+        ).fetchone()
+        if session is None:
+            raise KeyError(session_id)
+        counts = {
+            str(row["status"]): int(row["count"])
+            for row in connection.execute(
+                "SELECT status,COUNT(*) AS count FROM jobs WHERE session_id=? GROUP BY status",
                 (session_id,),
-            ).fetchone()
-            if session is None:
-                raise KeyError(session_id)
-            counts = {
-                str(row["status"]): int(row["count"])
-                for row in connection.execute(
-                    "SELECT status,COUNT(*) AS count FROM jobs WHERE session_id=? GROUP BY status",
-                    (session_id,),
-                )
-            }
-            attempts = connection.execute(
-                "SELECT COUNT(*) AS total,SUM(CASE WHEN attempt_no>1 THEN 1 ELSE 0 END) AS retries,"
-                "SUM(CASE WHEN status='running' THEN 1 ELSE 0 END) AS running FROM attempts WHERE session_id=?",
-                (session_id,),
-            ).fetchone()
-            total_jobs = sum(counts.values())
-            completed = sum(counts.get(key, 0) for key in ("ok", "error", "cancelled"))
-            return {
-                "updated_at": session["updated_at"],
-                "status": session["status"],
-                "planned": total_jobs,
-                "logical_completed": completed,
-                "successful": counts.get("ok", 0),
-                "errors": counts.get("error", 0),
-                "cancelled": counts.get("cancelled", 0),
-                "pending": counts.get("pending", 0),
-                "http_attempts": int(attempts["total"] or 0),
-                "retries": int(attempts["retries"] or 0),
-                "in_flight": int(attempts["running"] or 0),
-                "stop_requested_at": session["stop_requested_at"],
-            }
+            )
+        }
+        attempts = connection.execute(
+            "SELECT COUNT(*) AS total,SUM(CASE WHEN attempt_no>1 THEN 1 ELSE 0 END) AS retries,"
+            "SUM(CASE WHEN status='running' THEN 1 ELSE 0 END) AS running FROM attempts WHERE session_id=?",
+            (session_id,),
+        ).fetchone()
+        total_jobs = sum(counts.values())
+        completed = sum(counts.get(key, 0) for key in ("ok", "error", "cancelled"))
+        valid = connection.execute(
+            "SELECT COUNT(*) FROM jobs j JOIN results r ON r.result_id=j.final_result_id "
+            "WHERE j.session_id=? AND j.status='ok' AND json_extract(r.result_json,'$.category') != '__INVALID_OUTPUT__'",
+            (session_id,)).fetchone()[0]
+        return {
+            "updated_at": session["updated_at"],
+            "status": session["status"],
+            "planned": total_jobs,
+            "logical_completed": completed,
+            "successful": counts.get("ok", 0),
+            "valid_samples": valid,
+            "errors": counts.get("error", 0),
+            "cancelled": counts.get("cancelled", 0),
+            "pending": counts.get("pending", 0),
+            "http_attempts": int(attempts["total"] or 0),
+            "retries": int(attempts["retries"] or 0),
+            "in_flight": int(attempts["running"] or 0),
+            "stop_requested_at": session["stop_requested_at"],
+        }
 
+    def progress(self, session_id: str) -> dict[str, Any]:
+        return self._read(lambda connection: self._progress(connection, session_id))
+
+    def session_summaries(self, limit: int = 100) -> list[dict]:
+        def read(connection):
+            rows = connection.execute(
+                "SELECT session_id,kind,status,claimed_model,request_model,safe_endpoint,created_at,updated_at, "
+                "json_extract(config_json,'$.project.id') AS project_id "
+                "FROM sessions ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+            return [{**dict(row), **self._progress(connection, row["session_id"])} for row in rows]
         return self._read(read)
 
     def attempt_details(self, session_id: str) -> list[dict[str, Any]]:
@@ -674,11 +681,65 @@ class SQLiteStateStore:
         return self._read(lambda connection: str(connection.execute("PRAGMA integrity_check").fetchone()[0]))
 
     def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        self._queue.put(None)
+        with self._lifecycle_lock:
+            if self._closed:
+                return
+            self._closed = True
+            self._queue.put(None)
         self._writer.join(timeout=10)
+
+    def put_document(self, kind: str, identity: str, value: dict[str, Any]) -> None:
+        body = canonical_json(value)
+        self._write(lambda connection: connection.execute(
+            "INSERT INTO documents(kind,id,body_json,updated_at) VALUES(?,?,?,?) "
+            "ON CONFLICT(kind,id) DO UPDATE SET body_json=excluded.body_json,updated_at=excluded.updated_at",
+            (kind, identity, body, utc_now()),
+        ))
+
+    def documents(self, kind: str) -> list[dict[str, Any]]:
+        return self._read(lambda connection: [json.loads(row[0]) for row in connection.execute(
+            "SELECT body_json FROM documents WHERE kind=? ORDER BY updated_at DESC,id", (kind,),
+        )])
+
+    def document_ids(self, kind: str) -> list[str]:
+        return self._read(lambda connection: [row[0] for row in connection.execute(
+            "SELECT id FROM documents WHERE kind=? ORDER BY updated_at DESC,id", (kind,))])
+
+    def document(self, kind: str, identity: str) -> dict[str, Any] | None:
+        def read(connection: sqlite3.Connection) -> dict[str, Any] | None:
+            row = connection.execute("SELECT body_json FROM documents WHERE kind=? AND id=?",
+                                     (kind, identity)).fetchone()
+            return json.loads(row[0]) if row else None
+        return self._read(read)
+
+    def delete_document(self, kind: str, identity: str) -> None:
+        self._write(lambda connection: connection.execute(
+            "DELETE FROM documents WHERE kind=? AND id=?", (kind, identity),
+        ))
+
+    def list_sessions(self, limit: int = 100) -> list[dict[str, Any]]:
+        return self._read(lambda connection: [dict(row) for row in connection.execute(
+            "SELECT session_id,kind,status,claimed_model,request_model,safe_endpoint,created_at,"
+            "updated_at FROM sessions ORDER BY created_at DESC LIMIT ?", (limit,),
+        )])
+
+    def collection_sessions(self, project_id: str) -> list[dict[str, Any]]:
+        return self._read(lambda connection: [dict(row) for row in connection.execute(
+            "SELECT session_id,config_json,status,created_at,updated_at FROM sessions "
+            "WHERE kind='collection' AND json_extract(config_json,'$.project.id')=? ORDER BY created_at", (project_id,))])
+
+    def retained_exchanges(self, session_id: str, after: int = 0, limit: int = 10) -> dict:
+        return self._read(lambda connection: {"records": [
+            {key: row[key] for key in ("attempt_id", "job_id", "attempt_no", "status")} |
+            {"exchange": json.loads(row["body_json"])}
+            for row in connection.execute(
+                "SELECT a.attempt_id,a.job_id,a.attempt_no,a.status,r.body_json FROM attempts a "
+                "JOIN retained_exchanges r ON r.attempt_id=a.attempt_id "
+                "WHERE a.session_id=? AND a.attempt_id>? ORDER BY a.attempt_id LIMIT ?",
+                (session_id, after, limit))], "coverage": dict(connection.execute(
+                "SELECT COUNT(*) AS attempts,COUNT(r.attempt_id) AS retained FROM attempts a "
+                "LEFT JOIN retained_exchanges r ON r.attempt_id=a.attempt_id WHERE a.session_id=?",
+                (session_id,)).fetchone())})
 
     def __enter__(self) -> "SQLiteStateStore":
         return self

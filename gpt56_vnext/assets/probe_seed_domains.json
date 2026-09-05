@@ -1,0 +1,53 @@
+{
+  "version": "domain-seeds-v2",
+  "groups": {
+    "science": {
+      "name": ["自然科学", "Natural sciences"],
+      "topics": [["物理学", "Physics"], ["化学", "Chemistry"], ["生物学", "Biology"], ["数学", "Mathematics"], ["地球科学", "Earth science"], ["材料科学", "Materials science"], ["遗传学", "Genetics"], ["微生物学", "Microbiology"], ["力学", "Mechanics"], ["光学", "Optics"]]
+    },
+    "engineering": {
+      "name": ["工程与技术", "Engineering and technology"],
+      "topics": [["机械工程", "Mechanical engineering"], ["电气工程", "Electrical engineering"], ["土木工程", "Civil engineering"], ["化学工程", "Chemical engineering"], ["航空工程", "Aeronautical engineering"], ["船舶工程", "Naval architecture"], ["计算机科学", "Computer science"], ["通信技术", "Communication technology"], ["制造技术", "Manufacturing technology"], ["能源技术", "Energy technology"]]
+    },
+    "architecture": {
+      "name": ["建筑与空间", "Architecture and space"],
+      "topics": [["建筑学", "Architecture"], ["城市规划", "Urban planning"], ["景观设计", "Landscape design"], ["室内设计", "Interior design"], ["园林", "Garden design"], ["公共空间", "Public spaces"], ["建筑材料", "Building materials"], ["建筑风格", "Architectural styles"], ["交通空间", "Transport spaces"], ["居住空间", "Residential spaces"]]
+    },
+    "humanities": {
+      "name": ["人文与思想", "Humanities and thought"],
+      "topics": [["哲学", "Philosophy"], ["历史学", "History"], ["考古学", "Archaeology"], ["文学", "Literature"], ["语言学", "Linguistics"], ["修辞学", "Rhetoric"], ["逻辑学", "Logic"], ["伦理学", "Ethics"], ["神话学", "Mythology"], ["民俗学", "Folklore"]]
+    },
+    "society": {
+      "name": ["社会与制度", "Society and institutions"],
+      "topics": [["社会学", "Sociology"], ["人类学", "Anthropology"], ["经济学", "Economics"], ["教育学", "Education"], ["法律研究", "Legal studies"], ["政治学", "Political science"], ["社会心理学", "Social psychology"], ["公共管理", "Public administration"], ["传播学", "Communication studies"], ["人口学", "Demography"]]
+    },
+    "geography": {
+      "name": ["地理与地域", "Geography and regions"],
+      "topics": [["自然地理", "Physical geography"], ["人文地理", "Human geography"], ["地图学", "Cartography"], ["地貌学", "Geomorphology"], ["区域地理", "Regional geography"], ["海洋地理", "Ocean geography"], ["山地地理", "Mountain geography"], ["城市地理", "Urban geography"], ["地名学", "Toponymy"], ["交通地理", "Transport geography"]]
+    },
+    "astronomy": {
+      "name": ["天文与宇宙", "Astronomy and the universe"],
+      "topics": [["太阳系", "The solar system"], ["行星科学", "Planetary science"], ["恒星天文学", "Stellar astronomy"], ["星系天文学", "Galactic astronomy"], ["宇宙学", "Cosmology"], ["天体观测", "Astronomical observation"], ["天体命名", "Celestial naming"], ["航天探索", "Space exploration"], ["天体力学", "Celestial mechanics"], ["天文仪器", "Astronomical instruments"]]
+    },
+    "environment": {
+      "name": ["环境与生态", "Environment and ecology"],
+      "topics": [["生态系统", "Ecosystems"], ["生物多样性", "Biodiversity"], ["环境保护", "Environmental protection"], ["气候系统", "Climate systems"], ["水文环境", "Water environments"], ["地质环境", "Geological environments"], ["土壤环境", "Soil environments"], ["森林生态", "Forest ecology"], ["海洋生态", "Marine ecology"], ["城市生态", "Urban ecology"]]
+    },
+    "arts": {
+      "name": ["艺术与设计", "Arts and design"],
+      "topics": [["绘画", "Painting"], ["雕塑", "Sculpture"], ["摄影", "Photography"], ["电影", "Cinema"], ["戏剧", "Theatre"], ["音乐", "Music"], ["舞蹈", "Dance"], ["平面设计", "Graphic design"], ["工业设计", "Industrial design"], ["视觉符号", "Visual symbols"]]
+    },
+    "culture": {
+      "name": ["文化与文明", "Culture and civilizations"],
+      "topics": [["世界文明", "World civilizations"], ["传统节庆", "Traditional festivals"], ["饮食文化", "Food cultures"], ["服饰文化", "Clothing cultures"], ["礼仪文化", "Etiquette cultures"], ["书写系统", "Writing systems"], ["器物文化", "Material culture"], ["地域文化", "Regional cultures"], ["手工艺", "Traditional crafts"], ["博物馆", "Museums"]]
+    },
+    "life": {
+      "name": ["生活与活动", "Everyday life and activities"],
+      "topics": [["烹饪", "Cooking"], ["园艺", "Gardening"], ["运动", "Sports"], ["旅行", "Travel"], ["航行", "Navigation"], ["游戏", "Games"], ["收藏", "Collecting"], ["手作", "Making things"], ["阅读", "Reading"], ["居家生活", "Home life"]]
+    },
+    "expression": {
+      "name": ["抽象与表达", "Abstraction and expression"],
+      "topics": [["颜色", "Colors"], ["形状", "Shapes"], ["空间关系", "Spatial relations"], ["时间概念", "Concepts of time"], ["节奏", "Rhythm"], ["声音", "Sounds"], ["数字", "Numbers"], ["字母", "Letters"], ["图案", "Patterns"], ["命名", "Naming"]]
+    }
+  }
+}

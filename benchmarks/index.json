@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "packages": [
+    {
+      "id": "meow-gpt-baseline",
+      "version": "4.5.0-rc4",
+      "mode": "gpt",
+      "publisher": "maintainer",
+      "path": "benchmarks/official/meow-gpt-baseline--4.5.0-rc4.meow.json",
+      "sha256": "cc33fa064da3725749de7a67e74518b2435e32020f9d3ef8635618404fb8b253",
+      "content_sha256": "1ee40e3c9d6900701b86ffe5e698155d9bdf6503d20796431bad96666bd04fff"
+    },
+    {
+      "id": "meow-claude-baseline",
+      "version": "4.5.0-rc3",
+      "mode": "claude",
+      "publisher": "maintainer",
+      "path": "benchmarks/official/meow-claude-baseline--4.5.0-rc3.meow.json",
+      "sha256": "66e22562ecaf7d0ef3c00fe9de79d5b7b8d7b42825f9329a0b1687ea34ac6538",
+      "content_sha256": "cce1a377deaa8909c89e2ef2611aeb7e11e14983658d71344831a67c44e32d8e"
+    }
+  ]
+}

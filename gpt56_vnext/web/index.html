@@ -1,108 +1,104 @@
 <!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GPT-5.6 混用检测器</title>
-  <link rel="stylesheet" href="/assets/app.css">
-</head>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>meow LLM Detector</title><link rel="stylesheet" href="/assets/style.css"></head>
 <body>
-  <header class="topbar">
-    <div>
-      <strong>GPT-5.6 混用检测器</strong>
-      <span>v4.1.1 · 本机运行</span>
-    </div>
-    <a href="/generator">探针生成器</a>
-  </header>
-  <nav class="steps" aria-label="检测步骤">
-    <button class="step active" data-step="connect"><span>1</span>连接</button>
-    <button class="step" data-step="plan"><span>2</span>方案</button>
-    <button class="step" data-step="run"><span>3</span>运行</button>
-    <button class="step" data-step="report"><span>4</span>报告</button>
-  </nav>
-
-  <main>
-    <section id="step-connect" class="page-step active">
-      <div class="section-heading"><div><h1>连接待测 API</h1><p>正式检测不需要可信端。API key 仅保存在当前页面和后端进程内存，关闭后台后清除。</p></div><span class="local-badge">仅监听 127.0.0.1</span></div>
-      <div class="form-grid connection-grid">
-        <label>API 地址<input id="base-url" type="url" placeholder="https://example.com/v1" autocomplete="off"></label>
-        <label>申报模型<select id="claimed-model"><option value="gpt-5.6-sol">Sol</option><option value="gpt-5.6-terra">Terra</option><option value="gpt-5.6-luna">Luna</option></select><small>Juice 和最终一致性按这里判断。</small></label>
-        <label>实际请求模型<input id="request-model" value="gpt-5.6-sol" autocomplete="off"><small>中转别名填这里；实际 HTTP 请求使用此值。</small></label>
-        <label class="wide">API key<input id="api-key" type="password" autocomplete="off" placeholder="仅保存在内存"></label>
-      </div>
-      <div class="actions"><button id="to-plan" class="primary">继续配置</button></div>
-    </section>
-
-    <section id="step-plan" class="page-step">
-      <div class="section-heading"><div><h1>检测方案</h1><p>选择内置档位，修改任何参数后会自动切换为自定义。最近配置只有实际开始过一次检测后才会保存。</p></div></div>
-      <div class="control-band">
-        <div><span class="control-label">运行方式</span><div id="mode-switch" class="segmented"><button data-mode="single" class="selected">单次检测</button><button data-mode="continuous">持续监控</button></div></div>
-        <div><span class="control-label">档位</span><div id="preset-switch" class="segmented"><button data-preset="low" class="selected">低</button><button data-preset="medium">中</button><button data-preset="high">高</button><button data-preset="custom">自定义</button></div></div>
-      </div>
-      <div id="custom-banner" class="warning-banner hidden"><strong>自定义档位测试结果仅供参考</strong><span id="custom-diff">参数已修改。</span></div>
-
-      <div class="layout-two">
-        <div>
-          <section class="plain-section">
-            <h2>请求外观与上下文</h2>
-            <div class="option-grid">
-              <label class="check-row"><input type="checkbox" id="format-normal">普通 Responses 请求<span>基础外观</span></label>
-              <label class="check-row"><input type="checkbox" id="format-native">原生 Codex 请求<span>建议先开启系统级 TUN VPN；浏览器代理不一定覆盖检测进程</span></label>
-              <label class="check-row"><input type="checkbox" id="context-none">无历史<span>最低 Token 消耗</span></label>
-              <label class="check-row"><input type="checkbox" id="context-32k">固定 32K 历史<span>每次约 33,792 输入 tokens，会明显增加消耗</span></label>
-            </div>
-          </section>
-          <section class="plain-section">
-            <div class="section-row"><h2>探测项目</h2><label class="file-action">导入自定义探针<input id="probe-file" type="file" accept=".json,.gpt56probe.json"></label></div>
-            <div id="probe-list" class="probe-list"></div>
-          </section>
-        </div>
-        <aside class="summary-panel">
-          <h2>计划预览</h2>
-          <dl id="estimate"><div><dt>请求数</dt><dd>—</dd></div></dl>
-          <div id="high-cost" class="cost-warning hidden"></div>
-          <label>并发数<input id="workers" type="number" min="1" max="32" value="8"><small>默认 8；提高后更容易触发上游限流。</small></label>
-          <div id="continuous-settings" class="hidden">
-            <label>最短间隔秒数<input id="min-interval" type="number" min="0" value="150"></label>
-            <label>最长间隔秒数<input id="max-interval" type="number" min="0" value="210"></label>
-            <label>每周期槽数<input id="slots-per-cycle" type="number" min="1" value="1"></label>
-          </div>
-          <label class="check-row retention-toggle"><input id="retention-enabled" type="checkbox">保存完整请求和返回<span>默认关闭，不保存认证头</span></label>
-          <label id="retention-path-row" class="hidden">留存目录<input id="retention-path" placeholder="请输入绝对路径" autocomplete="off"><small>可能包含题面、上下文和完整输出，请选择受控目录。</small></label>
-          <div class="actions vertical"><button id="restore-defaults" class="secondary">恢复本档默认参数</button><button id="start-run" class="primary">开始检测</button><button id="back-connect" class="secondary">返回连接</button></div>
-        </aside>
-      </div>
-    </section>
-
-    <section id="step-run" class="page-step">
-      <div class="section-heading"><div><h1>运行状态</h1><p id="run-subtitle">正在建立会话。</p><p id="run-models"></p></div><button id="stop-run" class="danger">停止</button></div>
-      <div class="status-strip"><span id="run-status" class="status-dot running">运行中</span><span id="run-session">会话 —</span><span id="run-updated">—</span></div>
-      <div class="progress-track"><div id="run-progress" style="width:0%"></div></div>
-      <div id="run-details" class="run-grid"></div>
-      <details class="log-panel"><summary>原始运行状态</summary><pre id="raw-status"></pre></details>
-    </section>
-
-    <section id="step-report" class="page-step">
-      <div id="report-empty" class="empty-state"><h1>尚无报告</h1><p>完成一次检测后，这里会显示简明结论和技术细节。</p></div>
-      <div id="report-content" class="hidden">
-        <div id="verdict-band" class="verdict-band"><div><span class="eyebrow">综合结论</span><h1 id="verdict-title">—</h1><p id="verdict-subtitle"></p><p id="report-models"></p></div><button id="new-session" class="secondary">新建会话</button></div>
-        <div id="report-custom" class="warning-banner hidden"><strong>自定义档位测试结果仅供参考</strong><span></span></div>
-        <section class="report-section fingerprint-section">
-          <div class="section-heading compact"><div><h2>指纹匹配度</h2><p>表示本批答案分布与三种可信基线的相对接近程度，不是真实路由概率或混用比例。</p></div><strong id="fingerprint-status" class="fingerprint-status">—</strong></div>
-          <div id="fingerprint-bars" class="fingerprint-bars"></div>
-          <details class="reference-note"><summary>现有验证参考与适用边界</summary><div id="fingerprint-reference"></div></details>
-        </section>
-        <section class="report-section"><h2>Juice 结果</h2><div id="juice-result" class="data-table"></div></section>
-        <section class="report-section"><h2>输出完整性与覆盖检测</h2><div id="deterministic-results" class="report-list"></div></section>
-        <section class="report-section"><h2>线路质量</h2><div id="network-result" class="metrics"></div></section>
-        <section class="report-section"><h2>未通过或未完成项目</h2><div id="failed-items" class="report-list"></div></section>
-        <section class="report-section"><h2>行为指纹探针</h2><div id="probe-results" class="data-table"></div></section>
-        <section class="report-section"><h2>请求格式对比</h2><div id="profile-results" class="data-table"></div></section>
-        <details class="report-section technical"><summary>方法、限制和 JSON 摘要</summary><div id="limitations"></div><p><a class="download-link" href="/api/detector/report" download="gpt56-report.json">下载完整 JSON 报告</a></p><pre id="report-json"></pre></details>
-      </div>
-    </section>
-  </main>
-  <div id="toast" role="status" aria-live="polite"></div>
-  <script src="/assets/detector.js"></script>
-</body>
-</html>
+<header class="app-header">
+  <div class="brand"><svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 17V7l10 6h4l10-6v10c5 14-1 18-12 18S3 31 8 17Z"/><path d="M13 22h2m10 0h2m-9 5 2 2 2-2"/></svg><div><strong>meow</strong><small>LLM DETECTOR</small></div><span class="version-badge">4.5.0 · PREVIEW</span></div>
+  <div class="header-meta"><span class="preview-label">开发预览 · 非最终版</span><button id="quick-update" class="header-update" type="button">检查更新</button><span id="service-state">连接中</span></div>
+</header>
+<main>
+<nav class="tabs" aria-label="工作区"><span class="nav-caption">工作台</span><button data-view="detect-view" aria-current="page"><span aria-hidden="true">◉</span> <span>检测</span></button><button data-view="library-view"><span aria-hidden="true">▤</span> <span>基准库</span></button><button data-view="settings-view"><span aria-hidden="true">⇄</span> <span>API 连接预设</span></button><button data-view="make-view"><span aria-hidden="true">＋</span> <span>生成基准</span></button><div class="nav-foot"><span class="local-dot"></span><span>仅在本机运行</span></div></nav>
+<div id="detect-view" class="workspace">
+<section class="intro"><h1>模型检测</h1><div class="step-guide"><span><b>01</b> 选择基准</span><i>→</i><span><b>02</b> 连接 API</span><i>→</i><span><b>03</b> 查看证据</span></div></section>
+<div class="detection-layout"><div class="setup-column">
+<section class="panel"><div class="section-heading"><span class="step-number">01</span><div><h2>选择模型与基准</h2></div></div>
+<div class="mode-cards" role="group" aria-label="模型系列"><button data-mode="gpt" aria-pressed="true"><strong>GPT</strong><small>Responses API</small><span class="mode-dot"></span></button><button data-mode="claude" aria-pressed="false"><strong>Claude</strong><small>Messages API</small><span class="mode-dot"></span></button><button data-mode="chat" aria-pressed="false"><strong>其他模型</strong><small>OpenAI-compatible Chat</small><span class="mode-dot"></span></button></div>
+<label class="sr-only">基准模式<select id="mode"><option value="gpt">GPT · Responses</option><option value="claude">Claude · Messages</option><option value="chat">其他 · Chat</option></select></label>
+<div class="grid"><label>基准包<select id="package"></select></label><label>你想验证的模型<select id="claimed"></select></label></div>
+<label class="check"><input id="show-reference-packages" type="checkbox">显示本地或社区参考基准</label>
+<div id="benchmark-note" class="context-note"></div><button class="text-button" data-jump="library-view">没有合适的基准？前往基准库 →</button>
+</section>
+<section class="panel"><div class="section-heading"><span class="step-number">02</span><div><h2>连接待测 API</h2></div></div>
+<label>使用已保存的 API 连接<select id="endpoint-preset"><option value="">仅本次手动输入</option></select></label>
+<div class="grid connection-fields"><label class="wide">API 地址<input id="base-url" placeholder="https://your-provider.com/v1" autocomplete="off"><small>粘贴服务商提供的 API 基地址。</small></label><label class="wide">API key<input id="key" type="password" autocomplete="off" placeholder="本次使用，不会写入普通文件"><small>检测结束后保留在本页；页面关闭或后台断开后清空。保存连接使用系统凭据库。</small></label><label class="wide">实际请求模型<input id="request-model" autocomplete="off" placeholder="服务商要求的模型名"><small>这是发给服务商的模型别名，可以和上方模型名称不同。</small></label></div>
+<button id="save-current-connection" class="text-button">保存这条 API 连接，下次不用再填 →</button>
+</section>
+<details class="panel advanced-panel"><summary><span>高级设置</span><small>并发、重试与定时检测</small></summary>
+<div class="grid"><label>并发<input id="workers" type="number" min="1" max="32" value="8"></label><label>重试<input id="retries" type="number" min="0" max="10" value="2"></label></div>
+<div class="grid"><label>执行方式<select id="run-mode"><option value="once">立即单次</option><option value="scheduled">定时独立单次</option></select></label><div id="schedule-controls" class="wide grid" hidden><label>轮间隔（分钟）<input id="schedule-minutes" type="number" min="1" value="60"></label><label>最多轮数（留空至手动停止）<input id="schedule-rounds" type="number" min="1"></label></div></div><p id="schedule-help" class="muted" hidden>定时模式需已保存凭据。每轮完成后计时，不混入上轮样本；关闭网页不等于停止后台。</p>
+</details></div>
+<aside class="run-column"><section class="panel run-card"><h2>本次检测</h2><label>检测档位<select id="tier"><option value="low">快速</option><option value="medium">标准</option><option value="high">深入</option></select></label><div class="request-metric"><strong id="request-count">—</strong><span>次指纹请求</span></div><p id="detect-estimate" class="muted"></p><div id="readiness" class="readiness">请选择基准包。</div><label class="check retention-choice"><input id="retain-raw" type="checkbox"><span>保留请求与响应<small>保存到本机，不保存 API key。</small></span></label><p id="start-error" class="action-error" role="alert" tabindex="-1"></p><button id="start" class="primary" disabled>开始检测 →</button><button id="stop" class="secondary-stop" disabled>停止</button><div class="privacy-note"><span aria-hidden="true">⌁</span><span>key 只发送给你指定的 API；基准包不能更改连接地址。</span></div></section>
+<section class="legend-card"><h3>如何理解结果</h3><p><span class="legend-dot green"></span><b>强指向申报模型</b></p><p><span class="legend-dot yellow"></span><b>证据不足</b></p><p><span class="legend-dot red"></span><b>强指向其他候选模型</b></p><small>网络错误和缺样不是“假模型”的证据。</small></section></aside></div>
+<section class="panel result-panel"><div class="section-heading"><span class="step-number">03</span><div><h2>检测结果</h2></div></div><div id="report-placeholder" class="empty-result"><span class="fingerprint-icon" aria-hidden="true">◎</span><h3>暂无检测结果</h3></div><div id="progress" class="status">尚未开始</div><div class="meter"><span id="meter-bar"></span></div><p id="schedule-status"></p><button id="schedule-pause" class="text-button" hidden>暂停后续计划</button><div id="verdict" class="verdict" hidden></div><p id="report-summary"></p><div id="match-bars"></div><div class="evidence-actions"><button id="retention-export" class="text-button" hidden>导出本次留存证据</button><details><summary>完整证据与机器报告</summary><pre id="report"></pre></details></div></section>
+<section class="panel history-panel"><h2>最近的检测</h2><p class="muted">打开历史报告，或从原配置恢复尚未完成的检测。</p><div id="run-history"></div></section>
+</div>
+<div id="make-view" class="workspace" hidden>
+<section class="intro"><h1>生成基准</h1><p>准备题目 → 分窗采样 → 选题与模拟 → 导出基准。</p></section>
+<section class="panel"><h2>1. 模型与基准草稿</h2><div class="grid">
+<label>基准名称<input id="draft-name" value="我的基准"></label>
+<label>基准版本<input id="draft-version" value="0.1.0" placeholder="0.1.0"></label>
+<label>请求模式<select id="draft-mode"><option value="gpt">GPT · Responses</option><option value="claude">Claude · Messages</option><option value="chat">其他 · Chat</option></select></label>
+<label class="wide">候选模型（每行一个实际 API 模型名，至少两个）<textarea id="draft-models" rows="3" placeholder="模型 A 的请求名&#10;模型 B 的请求名"></textarea></label></div>
+<div class="actions"><button id="draft-create">新建基准草稿</button><button id="draft-save">保存草稿</button><button id="draft-export">导出草稿</button><label class="file-button">导入草稿<input id="draft-import" type="file" accept=".json"></label></div>
+<label>已保存草稿<select id="draft-saved"></select></label><button id="draft-open">打开所选草稿</button>
+</section>
+<section class="panel"><h2>2. 候选题</h2>
+<details><summary>AI 批量出题（独立连接、显式确认费用）</summary><p id="ai-seed-info" class="muted"></p><div class="grid">
+<label>AI 地址<input id="ai-url" placeholder="https://example.com/v1"></label><label>AI 模型<input id="ai-model"></label>
+<label>AI 请求格式<select id="ai-mode"><option value="chat">Chat</option><option value="gpt">Responses</option><option value="claude">Messages</option></select></label>
+<label>临时 AI key<input id="ai-key" type="password" autocomplete="off"></label>
+<label>本次候选数<input id="ai-count" type="number" min="1" max="10" value="10"></label>
+<label>题面语言<select id="ai-language"><option value="zh-CN">中文</option><option value="en">English</option></select></label>
+<label>每百万输入 token 美元价格<input id="ai-input-price" type="number" min="0" step="0.1"></label>
+<label>每百万输出 token 美元价格<input id="ai-output-price" type="number" min="0" step="0.1"></label>
+<label>本次金额上限（估算控制）<input id="ai-budget" type="number" min="0.000001" step="0.01"></label>
+<label>生成总输出 token 上限<input id="ai-output-limit" type="number" min="256" max="8192" value="2048"></label></div>
+<p class="muted">只调用一次；费用依赖你填写的费率，建议同时设置供应商限额。生成不足不自动补发。</p>
+<label class="check"><input id="ai-consent" type="checkbox">确认本次生成请求与费用</label><button id="ai-generate">生成候选草稿</button>
+</details>
+<div class="actions"><button id="probe-add">手动添加题目</button><button id="probe-select-all">全部勾选</button><button id="probe-recommend">用推荐替换勾选</button></div>
+<div class="actions"><button id="probe-similar">检查相似题</button><button id="probe-preview">对照预览（不调用 API）</button></div>
+<div id="similar-result" role="status"></div>
+<div class="grid"><label>最多推荐题数<input id="recommend-maximum" type="number" min="1" max="1000" value="7"></label><label>推荐低档请求上限<input id="recommend-budget" type="number" min="1" max="100000" value="100"></label></div>
+<details><summary>批量添加题面</summary><label>每行一道题<textarea id="probe-bulk-text" rows="4"></textarea></label><button id="probe-bulk-add">添加并跳过重复题</button></details>
+<p class="muted">默认 system 为 .、low、无上下文。高级参数在单题详情中编辑；修改后需重新采集。</p>
+<div class="table-scroll"><table><thead><tr><th>选择</th><th>题目 / 精确请求</th><th>分布诊断</th><th>低 / 中 / 高次数</th><th>操作</th></tr></thead><tbody id="probe-rows"></tbody></table></div>
+<div id="selection-result" aria-live="polite"></div>
+</section>
+<section class="panel"><h2>3. 可信采集</h2><div class="grid">
+<label>可信 API 地址<input id="collect-url" placeholder="https://openrouter.ai/api/v1"></label>
+<label>临时 key<input id="collect-key" type="password" autocomplete="off"></label>
+<label>每模型每题本窗次数<input id="collect-samples" type="number" min="1" max="1000" value="3"></label>
+<label>本次时间窗<input id="collect-window" type="number" min="1" value="1"></label></div>
+<p id="collect-profile" class="muted"></p><p id="collect-estimate" class="muted">先新建或导入草稿。</p><label class="check"><input id="collect-consent" type="checkbox">确认向可信端发送上述付费请求</label>
+<div class="actions"><button id="collect-start">开始本窗采集</button><button id="collect-stop" disabled>停止本窗</button><button id="collect-analyze">分析已完成窗口</button></div>
+<div id="collect-progress" role="status">尚未采集</div><p id="collect-ready-at" class="muted"></p><div id="collection-history"></div>
+</section>
+<section class="panel"><h2>4. 模拟与导出</h2><div class="grid">
+<label>模拟正确指向占比目标<input id="sim-target" type="number" min="0.5" max="1" step="0.001" value="0.99"></label>
+<label>选线覆盖率（留出容错余量）<input id="sim-selection-target" type="number" min="0.5" max="1" step="0.001" value="0.999"></label>
+<label>每档总模拟批次<input id="sim-batches" type="number" min="200" value="8000"></label></div>
+<p class="muted">三档的每题请求数在上表编辑。模拟只使用已有答案池，不发送 API 请求；同池模拟不是独立验证。</p>
+<p class="muted">按规定数量的有效答案模拟；正确指向目标不包含网络失败或无效回答造成的未完成。</p>
+<div class="actions"><button id="simulate">按当前勾选和次数模拟</button><button id="simulate-stop">停止模拟</button><button id="simulation-export" disabled>导出基准包</button><button id="simulation-install" disabled>保存到本机基准库</button></div>
+<label>模拟历史<select id="simulation-history"></select></label><button id="simulation-resume" disabled>继续所选模拟</button><div id="simulation-result"></div>
+</section><p id="make-notice" role="status"></p></div>
+<div id="library-view" class="workspace" hidden>
+<section class="intro"><h1>基准库</h1><p>包是固定的数据文件，不执行其中的代码。采集来源不等于模型真实性证明。</p></section>
+<section class="panel"><h2>本地基准包</h2><label>导入 .meow.json<input id="package-import" type="file" accept=".json"></label><div id="local-packages"></div></section>
+<section class="panel"><h2>在线目录</h2><button id="catalog-refresh">检查目录更新</button><p class="muted">目录尚未发布时会提示不可用；已安装包仍可离线使用。</p><div id="remote-packages"></div></section>
+<p id="library-notice" role="status"></p></div>
+<div id="settings-view" class="workspace" hidden><section class="intro"><div class="eyebrow">YOUR API CONNECTIONS</div><h1>API 连接预设</h1><p>地址和模型名保存在本机，key 只保存在系统凭据库。不会存进 JSON 或浏览器存储。</p></section>
+<p class="muted">定时计划独立保存连接与凭据。修改或删除预设不改变已有计划；新建计划时采用新设置。</p>
+<button id="schedule-delete">删除已停止的定时计划及凭据</button>
+<section class="panel"><h2>添加或编辑 API 连接</h2><div class="grid">
+<label>要编辑的连接<select id="preset-edit"><option value="">添加新连接</option></select></label>
+<label>名称<input id="preset-name"></label>
+<label>协议<select id="preset-mode"><option value="gpt">GPT · Responses</option><option value="claude">Claude · Messages</option><option value="chat">其他 · Chat</option></select></label>
+<label>模型别名<input id="preset-model"></label>
+<label class="wide">API 基地址<input id="preset-url" placeholder="https://example.com/v1"></label>
+<label class="wide">新 key（留空保留已有凭据）<input id="preset-key" type="password" autocomplete="off"></label></div>
+<p class="muted">更换地址时必须重新提供 key。已有定时计划使用独立凭据，不受预设修改或删除影响。</p>
+<div class="actions"><button id="preset-save">保存到系统凭据库</button><button id="preset-delete">删除所选连接及凭据</button><button id="preset-export">导出非秘密连接配置</button></div>
+<p id="preset-notice" role="status"></p></section>
+<section class="panel"><div class="eyebrow">APPLICATION</div><h2>程序更新</h2><p class="muted">程序更新与基准库更新不同。检查不会安装软件；确认下载后也不会覆盖正在运行的版本。</p><div class="actions"><button id="program-check">检查程序更新</button><button id="program-download" disabled>下载并校验更新包</button></div><p id="program-status" role="status"></p><details><summary>版本说明</summary><pre id="program-notes"></pre></details><p class="muted">下载后解压到独立目录，退出旧后台，再启动新版。不会自动运行下载的代码。</p></section></div>
+</main><button id="jump-to-start" class="jump-to-start" type="button">跳转到开始检测</button><script src="/assets/i18n.js"></script><script src="/assets/app.js"></script><script src="/assets/workbench.js"></script></body></html>
