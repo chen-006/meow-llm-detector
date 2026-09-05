@@ -40,7 +40,7 @@ def verify(archives):
             check = '''import sys, ssl, sqlite3, httpx, keyring, numpy, json, uuid
 from pathlib import Path
 root = Path(sys.executable).resolve().parents[1]
-assert sys.flags.isolated and not sys.flags.user_site
+assert sys.flags.isolated and sys.flags.no_user_site
 assert all(Path(p).resolve().is_relative_to(root) for p in sys.path)
 assert httpx.__version__ == '0.28.1' and numpy.__version__ == '2.3.5'
 assert 'Windows' in type(keyring.get_keyring()).__module__
