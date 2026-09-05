@@ -31,7 +31,7 @@ def verify(archives):
                 expected, name = line.split('  ', 1)
                 assert hashlib.sha256((folder / name).read_bytes()).hexdigest() == expected, name
             env = os.environ.copy()
-            env['PATH'] = str(Path(env['SystemRoot']) / 'System32')
+            env['PATH'] = str(Path(env['SYSTEMROOT']) / 'System32')
             env['PYTHONHOME'] = str(temp / 'invalid-system-python')
             env['PYTHONPATH'] = str(temp / 'invalid-system-packages')
             env['PYTHONUSERBASE'] = str(temp / 'invalid-user-packages')
@@ -88,7 +88,7 @@ print('Isolated runtime, NumPy, HTTPS and Windows credential round-trip passed')
                     assert (folder / 'meow_runs/state.sqlite3').exists()
                     print(f'PASS {archive_path.name}: moved Unicode/space path; start.bat; no system Python; no pip; HTTP UI', flush=True)
                 finally:
-                    subprocess.run([str(Path(env['SystemRoot']) / 'System32/taskkill.exe'), '/PID', str(process.pid), '/T', '/F'], capture_output=True)
+                    subprocess.run([str(Path(env['SYSTEMROOT']) / 'System32/taskkill.exe'), '/PID', str(process.pid), '/T', '/F'], capture_output=True)
                     process.wait(timeout=15)
     assert len(list(archives.glob('*portable-*.zip'))) == 2
 
