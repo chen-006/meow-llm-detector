@@ -1,0 +1,116 @@
+name: Refresh v4.5.0 float hotfix
+on:
+  push:
+    branches: [release/v4.5.0-float-hotfix]
+    paths: [.github/workflows/refresh-v4.5.0.yml]
+permissions:
+  contents: read
+concurrency:
+  group: refresh-release-v4.5.0
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'chen-006/meow-llm-detector'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: chen-006/meow-llm-detector
+      SOURCE_SHA: 67ea19892c5d75ba2076c08e19229d1d4b7184fa
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 67ea19892c5d75ba2076c08e19229d1d4b7184fa
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify source and back up existing release
+        run: |
+          mkdir -p backup
+          gh api repos/chen-006/meow-llm-detector/actions/runs/33965905688 > backup/source-ci.json
+          gh api repos/chen-006/meow-llm-detector/releases/tags/v4.5.0 > backup/release.json
+          gh api repos/chen-006/meow-llm-detector/git/ref/tags/v4.5.0 > backup/tag.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          run = json.loads(Path('backup/source-ci.json').read_text())
+          assert run['head_sha'] == os.environ['SOURCE_SHA']
+          assert run['path'] == '.github/workflows/check.yml' and run['conclusion'] == 'success'
+          release = json.loads(Path('backup/release.json').read_text())
+          assert release['id'] == 383227883 and not release.get('immutable', False) and not release['draft']
+          expected = {'meow-claude-baseline--4.5.0-rc3.meow.json': 545753904,
+                      'meow-gpt-baseline--4.5.0-rc4.meow.json': 545753869,
+                      'meow-llm-detector-v4.5.0-en.zip': 545753903,
+                      'meow-llm-detector-v4.5.0-zh-CN.zip': 545753905,
+                      'SHA256SUMS.txt': 545753871}
+          assert {a['name']: a['id'] for a in release['assets']} == expected, 'Release changed; inspect before retrying'
+          tag = json.loads(Path('backup/tag.json').read_text())
+          assert tag['object']['sha'] == '4699a1f81a8451727906da30c4276c9fd96ff441', 'Tag changed'
+          Path('backup/original-notes.md').write_text(release['body'] or '', encoding='utf-8')
+          notes = (release['body'] or '').replace('65项Python', '68项Python').replace('跨平台CI待完成', 'Windows、Linux、macOS CI 均已通过')
+          notes += '\n\n### 2026-09-05 跨平台兼容性修复 / Cross-platform hotfix\n\n'
+          notes += '已更新中英文一键 ZIP、SHA256SUMS.txt 和 v4.5.0 标签，源码提交：' + os.environ['SOURCE_SHA'] + '。\n\n'
+          notes += '修复 Linux/macOS 加载基准包时由浮点末位差异引发的 package_derived_data_mismatch。基准包、阈值和校准绑定保持不变，无需重新采样或校准。旧包用户请重新下载；同版本修复不会触发程序内的新版本提示。\n\n'
+          notes += 'Both language ZIPs and checksums have been refreshed. Published benchmark packages and calibration bindings are unchanged. Existing users should download the refreshed ZIP; this same-version hotfix does not trigger the in-app version update notification.\n'
+          Path('release-notes.md').write_text(notes, encoding='utf-8')
+          PY
+          gh release download v4.5.0 --dir backup
+      - name: Preserve previous release for rollback
+        uses: actions/upload-artifact@v4
+        with:
+          name: previous-v4.5.0-release
+          path: backup/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Build and verify replacement ZIPs
+        run: |
+          python -B scripts/build_release.py --output dist
+          python - <<'PY'
+          import hashlib, zipfile
+          from pathlib import Path
+          for line in Path('dist/SHA256SUMS.txt').read_text().splitlines():
+              digest, name = line.split('  ', 1)
+              path = Path('dist') / name
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+              with zipfile.ZipFile(path) as z:
+                  assert z.testzip() is None
+                  prefix = path.stem + '/'
+                  assert z.read(prefix + 'gpt56_vnext/benchmark.py') == Path('gpt56_vnext/benchmark.py').read_bytes()
+                  for entry in z.read(prefix + 'SHA256SUMS.txt').decode().splitlines():
+                      expected, member = entry.split('  ', 1)
+                      assert hashlib.sha256(z.read(prefix + member)).hexdigest() == expected
+          print('Both ZIPs and all internal file checksums verified')
+          PY
+      - name: Refresh assets, tag and release notes
+        id: publish
+        run: |
+          gh release upload v4.5.0 dist/*.zip dist/SHA256SUMS.txt --clobber
+          gh api --method PATCH repos/chen-006/meow-llm-detector/git/refs/tags/v4.5.0 -f sha="$SOURCE_SHA" -F force=true
+          gh release edit v4.5.0 --target "$SOURCE_SHA" --notes-file release-notes.md
+      - name: Verify published files and tag
+        run: |
+          mkdir verify
+          gh release download v4.5.0 --dir verify
+          gh api repos/chen-006/meow-llm-detector/git/ref/tags/v4.5.0 > verify-tag.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          for path in Path('dist').iterdir():
+              assert path.read_bytes() == (Path('verify') / path.name).read_bytes(), path.name
+          for path in Path('backup').glob('*.meow.json'):
+              assert path.read_bytes() == (Path('verify') / path.name).read_bytes(), path.name
+          assert json.loads(Path('verify-tag.json').read_text())['object']['sha'] == os.environ['SOURCE_SHA']
+          print('Published ZIPs, checksums, unchanged benchmarks and tag verified')
+          PY
+      - name: Restore previous release if publication fails
+        if: failure() && (steps.publish.outcome == 'success' || steps.publish.outcome == 'failure')
+        run: |
+          gh release upload v4.5.0 backup/*.zip backup/SHA256SUMS.txt --clobber
+          previous_sha="$(python -c "import json; print(json.load(open('backup/tag.json'))['object']['sha'])")"
+          gh api --method PATCH repos/chen-006/meow-llm-detector/git/refs/tags/v4.5.0 -f sha="$previous_sha" -F force=true
+          previous_target="$(python -c "import json; print(json.load(open('backup/release.json'))['target_commitish'])")"
+          gh release edit v4.5.0 --target "$previous_target" --notes-file backup/original-notes.md
