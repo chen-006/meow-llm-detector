@@ -92,7 +92,7 @@ def build(source, output):
             start = ('@echo off\nsetlocal\nchcp 65001 >nul\ncd /d "%~dp0"\n'
                      'if not exist "%~dp0portable-python\\python.exe" (\n'
                      f'  echo {missing}\n  pause\n  exit /b 1\n)\n'
-                     '"%~dp0portable-python\\python.exe" -B -X utf8 "%~dp0launch_portable.py" %*\n'
+                     '"%~dp0portable-python\\python.exe" -I -B -X utf8 "%~dp0launch_portable.py" %*\n'
                      'if errorlevel 1 (\n  pause\n  exit /b 1\n)\n')
             write(folder / 'start.bat', start.replace('\n', '\r\n'))
             entries = sorted(p for p in folder.rglob('*') if p.is_file() and p != folder / 'SHA256SUMS.txt')

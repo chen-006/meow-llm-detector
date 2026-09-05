@@ -40,7 +40,7 @@ def verify(archives):
             check = '''import sys, ssl, sqlite3, httpx, keyring, numpy, json, uuid
 from pathlib import Path
 root = Path(sys.executable).resolve().parents[1]
-assert sys.flags.isolated and sys.flags.no_user_site
+assert sys.flags.isolated and sys.flags.no_user_site, repr(sys.flags)
 assert all(Path(p).resolve().is_relative_to(root) for p in sys.path)
 assert httpx.__version__ == '0.28.1' and numpy.__version__ == '2.3.5'
 assert 'Windows' in type(keyring.get_keyring()).__module__
@@ -54,9 +54,9 @@ ssl.create_default_context()
 with sqlite3.connect(':memory:') as db: assert db.execute('select 1').fetchone()[0] == 1
 print('Isolated runtime, NumPy, HTTPS and Windows credential round-trip passed')
 '''
-            subprocess.run([python, '-B', '-X', 'utf8', '-c', check], cwd=temp, env=env, check=True, timeout=60)
+            subprocess.run([python, '-I', '-B', '-X', 'utf8', '-c', check], cwd=temp, env=env, check=True, timeout=60)
             if index == 0:
-                subprocess.run([python, '-B', '-X', 'utf8', '-m', 'unittest', 'discover', '-s', str(folder / 'tests'), '-v'],
+                subprocess.run([python, '-I', '-B', '-X', 'utf8', '-m', 'unittest', 'discover', '-s', str(folder / 'tests'), '-v'],
                                cwd=folder, env=env, check=True, timeout=180)
             with socket.socket() as sock:
                 sock.bind(('127.0.0.1', 0))
