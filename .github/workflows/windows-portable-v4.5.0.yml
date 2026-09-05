@@ -1,0 +1,161 @@
+name: Build and publish v4.5.0 Windows portable packages
+on:
+  push:
+    branches: [release/v4.5.0-windows-portable]
+    paths:
+      - .github/workflows/windows-portable-v4.5.0.yml
+      - scripts/*portable*.py
+      - docs/WINDOWS_PORTABLE_*.md
+permissions:
+  contents: read
+concurrency:
+  group: refresh-release-v4.5.0
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 67ea19892c5d75ba2076c08e19229d1d4b7184fa
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+          architecture: x64
+      - name: Build with official embedded Python and bundled wheels
+        run: python -B tools/scripts/build_windows_portable.py --source source --output dist
+      - name: Verify relocated archives without system Python on PATH
+        run: python -B tools/scripts/verify_windows_portable.py dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tested-windows-portable-v4.5.0
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90
+  publish:
+    needs: build
+    if: github.repository == 'chen-006/meow-llm-detector'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: chen-006/meow-llm-detector
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tested-windows-portable-v4.5.0
+          path: dist
+      - name: Check current release and prepare minimal notes
+        run: |
+          mkdir backup
+          gh api repos/chen-006/meow-llm-detector/releases/tags/v4.5.0 > backup/release.json
+          gh api repos/chen-006/meow-llm-detector/git/ref/tags/v4.5.0 > backup/tag.json
+          gh release download v4.5.0 --dir backup
+          python3 - <<'PY'
+          import hashlib, json, os, zipfile
+          from pathlib import Path
+          release = json.loads(Path('backup/release.json').read_text())
+          assert release['id'] == 383227883 and not release.get('immutable') and not release['draft']
+          expected = {'meow-claude-baseline--4.5.0-rc3.meow.json': 545753904,
+                      'meow-gpt-baseline--4.5.0-rc4.meow.json': 545753869,
+                      'meow-llm-detector-v4.5.0-en.zip': 545801046,
+                      'meow-llm-detector-v4.5.0-zh-CN.zip': 545801043,
+                      'SHA256SUMS.txt': 545801045}
+          assert {a['name']: a['id'] for a in release['assets']} == expected, 'Release changed; inspect before publishing'
+          assert json.loads(Path('backup/tag.json').read_text())['object']['sha'] == '67ea19892c5d75ba2076c08e19229d1d4b7184fa'
+          for filename in ['meow-llm-detector-v4.5.0-en.zip', 'meow-llm-detector-v4.5.0-zh-CN.zip']:
+              expected_hash = next(a['digest'].split(':', 1)[1] for a in release['assets'] if a['name'] == filename)
+              assert hashlib.sha256((Path('backup') / filename).read_bytes()).hexdigest() == expected_hash
+          checksums = Path('backup/SHA256SUMS.txt').read_text().rstrip() + '\n'
+          additions = Path('dist/PORTABLE_SHA256SUMS.txt').read_text()
+          assert len(additions.splitlines()) == 2
+          for line in additions.splitlines():
+              expected_hash, name = line.split('  ', 1)
+              assert Path(name).name == name and 'windows-x64-portable-' in name
+              path = Path('dist') / name
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == expected_hash
+              with zipfile.ZipFile(path) as archive:
+                  assert archive.testzip() is None
+                  prefix = path.stem + '/'
+                  meta = json.loads(archive.read(prefix + 'PORTABLE_BUILD.json'))
+                  assert meta['builder_commit'] == os.environ['GITHUB_SHA']
+                  assert meta['source_commit'] == '67ea19892c5d75ba2076c08e19229d1d4b7184fa'
+                  for item in archive.read(prefix + 'SHA256SUMS.txt').decode().splitlines():
+                      digest, member = item.split('  ', 1)
+                      assert hashlib.sha256(archive.read(prefix + member)).hexdigest() == digest
+                  locale = 'zh-CN' if 'zh-CN' in name else 'en'
+                  original = Path('backup') / f'meow-llm-detector-v4.5.0-{locale}.zip'
+                  with zipfile.ZipFile(original) as old:
+                      for member in old.namelist():
+                          relative = member.split('/', 1)[1]
+                          if relative.startswith('gpt56_vnext/') or relative in {'VERSION', 'requirements.txt'}:
+                              assert old.read(member) == archive.read(prefix + relative), relative
+          Path('dist/SHA256SUMS.txt').write_text(checksums + additions)
+          Path('backup/original-notes.md').write_text(release['body'] or '', encoding='utf-8')
+          notes = '''## 下载与启动 / Download and start
+
+          - **Windows 10 / 11，Intel / AMD 64 位：推荐便携包** `windows-x64-portable-zh-CN.zip`（中文）或 `windows-x64-portable-en.zip`（English）。内置 Python 3.13.15 和依赖，完整解压到新文件夹后双击 `start.bat`；无需另装 Python 或首次安装依赖。调用模型 API 仍需联网。
+          - **源码包 / macOS / Linux：** 选原来的 `v4.5.0-zh-CN.zip` 或 `v4.5.0-en.zip`，需 Python 3.11+；Windows 运行 `start.bat`，macOS / Linux 运行 `sh start.sh`。
+          - 浏览器未打开时访问 `http://127.0.0.1:8765/`。数据在 `meow_runs`；迁移前关闭旧后台。Key 保存在系统凭据库，不随文件夹迁移到另一台电脑。
+          - 使用详情见包内 README；下载校验见 `SHA256SUMS.txt`。
+
+          **English:** On Windows 10/11 x64, choose a `windows-x64-portable` ZIP, extract everything and double-click `start.bat`. Python and dependencies are included; API calls still need a network connection. Original source ZIPs require Python 3.11+. See the included README for details.
+
+          包含 GPT rc4、Claude rc3 基准与双语文档。便携包与普通 v4.5.0 的检测核心、基准和校准绑定相同，无需重新采样或校准。模拟为同池有效答案条件统计，不是独立真实准确率。
+
+          Includes GPT rc4 and Claude rc3 benchmarks and bilingual documentation. The portable edition retains the same detection core and calibration bindings. Same-pool simulations are not independent real-world accuracy.
+          '''
+          Path('release-notes.md').write_text('\n'.join(line.strip() for line in notes.splitlines()).strip() + '\n', encoding='utf-8')
+          PY
+      - name: Preserve existing release metadata and files
+        uses: actions/upload-artifact@v4
+        with:
+          name: before-portable-v4.5.0
+          path: backup/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Add portable archives and refresh notes and checksums
+        id: publish
+        run: |
+          gh release upload v4.5.0 dist/*portable-*.zip
+          gh release upload v4.5.0 dist/SHA256SUMS.txt --clobber
+          gh release edit v4.5.0 --notes-file release-notes.md
+      - name: Verify release downloads, retained assets and tag
+        run: |
+          mkdir verify
+          gh release download v4.5.0 --dir verify
+          gh api repos/chen-006/meow-llm-detector/releases/tags/v4.5.0 > verify/release.json
+          gh api repos/chen-006/meow-llm-detector/git/ref/tags/v4.5.0 > verify/tag.json
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          for line in Path('dist/SHA256SUMS.txt').read_text().splitlines():
+              digest, name = line.split('  ', 1)
+              assert hashlib.sha256((Path('verify') / name).read_bytes()).hexdigest() == digest
+          assert Path('verify/SHA256SUMS.txt').read_bytes() == Path('dist/SHA256SUMS.txt').read_bytes()
+          for path in list(Path('backup').glob('*.zip')) + list(Path('backup').glob('*.meow.json')):
+              assert path.read_bytes() == (Path('verify') / path.name).read_bytes(), path.name
+          assert json.loads(Path('verify/tag.json').read_text())['object']['sha'] == '67ea19892c5d75ba2076c08e19229d1d4b7184fa'
+          release = json.loads(Path('verify/release.json').read_text())
+          assert release['body'] == Path('release-notes.md').read_text()
+          assert 'Cross-platform hotfix' not in release['body']
+          assert len(release['assets']) == 7
+          print('Portable downloads, all checksums, unchanged source/benchmarks/tag and minimal notes verified')
+          PY
+      - name: Restore metadata and remove new archives if publication fails
+        if: failure() && (steps.publish.outcome == 'success' || steps.publish.outcome == 'failure')
+        run: |
+          gh release upload v4.5.0 backup/SHA256SUMS.txt --clobber
+          gh release edit v4.5.0 --notes-file backup/original-notes.md
+          for archive in dist/*portable-*.zip; do
+            gh release delete-asset v4.5.0 "$(basename "$archive")" --yes || true
+          done
