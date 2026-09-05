@@ -1,6 +1,7 @@
 from collections import Counter
 from copy import deepcopy
 import json
+import math
 from pathlib import Path
 import sys
 import tempfile
@@ -51,6 +52,45 @@ class BenchmarkTests(unittest.TestCase):
         changed["content_sha256"] = content_hash(changed)
         with self.assertRaises(AppError):
             load_package(changed)
+
+    def test_package_rounding_preserves_published_values_and_hash(self):
+        package = build_package(*fixture())
+        pairs = package["fitted"]["cells"]["ab"]["pairwise_jsd"]
+        pairs["a|b"] = math.nextafter(pairs["a|b"], math.inf)
+        package["content_sha256"] = content_hash(package)
+        loaded = load_package(json.dumps(package))
+        self.assertEqual(loaded, package)
+        self.assertEqual(load_package(loaded), package)
+        loaded["fitted"]["cells"]["ab"]["pairwise_jsd"]["a|b"] = 0.0
+        self.assertNotEqual(loaded["fitted"], package["fitted"])
+
+    def test_package_rounding_does_not_bypass_hash_check(self):
+        package = build_package(*fixture())
+        pairs = package["fitted"]["cells"]["ab"]["pairwise_jsd"]
+        pairs["a|b"] = math.nextafter(pairs["a|b"], math.inf)
+        with self.assertRaisesRegex(AppError, "package_hash_mismatch"):
+            load_package(package)
+
+    def test_package_rounding_keeps_structure_and_counts_exact(self):
+        package = build_package(*fixture())
+        variants = []
+        for replacement in (101, 100.0, True):
+            changed = deepcopy(package)
+            changed["fitted"]["cells"]["ab"]["model_counts"]["a"]["a"] = replacement
+            variants.append(changed)
+        changed = deepcopy(package)
+        del changed["fitted"]["cells"]["ab"]["quality"]
+        variants.append(changed)
+        changed = deepcopy(package)
+        changed["fitted"]["models"].reverse()
+        variants.append(changed)
+        changed = deepcopy(package)
+        changed["unexpected_field"] = "must not be accepted"
+        variants.append(changed)
+        for index, changed in enumerate(variants):
+            changed["content_sha256"] = content_hash(changed)
+            with self.subTest(index=index), self.assertRaisesRegex(AppError, "package_derived_data_mismatch"):
+                load_package(changed)
 
     def test_bad_shapes_counts_and_models(self):
         project, observations = fixture()

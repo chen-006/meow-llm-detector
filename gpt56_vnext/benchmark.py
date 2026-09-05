@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import math
 import re
 from typing import Any
 
@@ -244,6 +245,22 @@ def build_package(project: dict, observations: dict, *, collection: dict | None 
     return package
 
 
+def _fitted_matches(expected: Any, actual: Any) -> bool:
+    """Allow platform rounding only in derived floats; keep structure exact."""
+    if type(expected) is not type(actual):
+        return False
+    if isinstance(expected, dict):
+        return expected.keys() == actual.keys() and all(
+            _fitted_matches(expected[key], actual[key]) for key in expected)
+    if isinstance(expected, list):
+        return len(expected) == len(actual) and all(
+            _fitted_matches(a, b) for a, b in zip(expected, actual))
+    if isinstance(expected, float):
+        return math.isfinite(expected) and math.isfinite(actual) and math.isclose(
+            expected, actual, rel_tol=1e-12, abs_tol=1e-15)
+    return expected == actual
+
+
 def load_package(value: dict | str | bytes) -> dict:
     if isinstance(value, (str, bytes)):
         if len(value if isinstance(value, bytes) else value.encode("utf-8")) > MAX_PACKAGE_BYTES:
@@ -254,6 +271,11 @@ def load_package(value: dict | str | bytes) -> dict:
     rebuilt = build_package(value, value.get("observations", {}), collection=value.get("collection"),
                             calibration=value.get("calibration"), validation=value.get("validation"),
                             _legacy=value.get("engine", {}).get("scoring_version") == "meow-fingerprint-v1")
+    if not _fitted_matches(rebuilt["fitted"], value.get("fitted")):
+        raise AppError("package_derived_data_mismatch")
+    # Preserve published numbers so package hashes and calibration bindings stay valid.
+    rebuilt["fitted"] = deepcopy(value["fitted"])
+    rebuilt["content_sha256"] = content_hash(rebuilt)
     if canonical_json(rebuilt) != canonical_json(value):
         raise AppError("package_derived_data_mismatch")
     return rebuilt
