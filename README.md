@@ -2,6 +2,8 @@
 
 [English](README_EN.md) · [下载](https://github.com/chen-006/meow-llm-detector/releases/latest)
 
+网页版：https://meowllm.top
+
 下载中文包并解压，Windows 双击 `start.bat`；macOS / Linux 在文件夹里运行 `sh start.sh`。需要 Python 3.11 或更新版本，首次启动会询问是否安装依赖。页面打开后，选模型、填 API 地址和 key，点“开始检测”即可。
 
 参考论文：[One Token Is Enough](https://arxiv.org/abs/2607.10252)。友情链接：[Linux.do 讨论](https://linux.do/t/topic/2704354) · [路由现象讨论](https://linux.do/t/topic/2728901)。实现参考与致谢：[hlwy-ai-checker](https://github.com/hanlinwenyuan/hlwy-ai-checker)。
