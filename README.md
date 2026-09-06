@@ -2,7 +2,7 @@
 
 [English](README_EN.md) · [下载](https://github.com/chen-006/meow-llm-detector/releases/latest)
 
-网页版：https://meowllm.top
+网页版：https://meowllm.top **有效样本足够的情况下，证据不足可能是因为中转作为号池，部分账号正常部分被风控。或者是内置基准以外的模型，例如gpt5.5**
 
 下载中文包并解压，Windows 双击 `start.bat`；macOS / Linux 在文件夹里运行 `sh start.sh`。需要 Python 3.11 或更新版本，首次启动会询问是否安装依赖。页面打开后，选模型、填 API 地址和 key，点“开始检测”即可。
 
