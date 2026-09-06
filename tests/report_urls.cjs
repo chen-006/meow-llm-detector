@@ -4,7 +4,7 @@ const nodes=new Map(), node=()=>({textContent:'',hidden:true,append(){},replaceC
 const context={$:id=>{if(!nodes.has(id))nodes.set(id,node());return nodes.get(id);},document:{documentElement:{lang:'en'},createElement:node}};
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(path.join(root,'gpt56_vnext/web/i18n.js'),'utf8'),context);
-vm.runInContext(source.slice(source.indexOf('function showReport('),source.indexOf('function renderHistory(')),context);
+vm.runInContext(source.slice(source.indexOf('function renderReportNote('),source.indexOf('function renderHistory(')),context);
 const report={claimed_model:'a',request_model:'alias-a',endpoint:'https://tested.invalid/v1',
  benchmark:{id:'b',version:'1.0.0',publisher:'maintainer',collection:{sources:[{url:'https://reference.invalid/v1'},{url:'https://reference.invalid/v1'}]}},
  fingerprint:{color:'green',reasons:[],matches:{a:.9},thresholds:{a:.8}}};
