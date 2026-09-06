@@ -56,6 +56,7 @@ class StreamParser:
         self.mode = mode
         self.parts: dict[tuple[int, int], str] = {}
         self.response: dict = {}
+        self.response_id: str | None = None
         self.usage: dict = {}
         self.finish_reason = None
         self.completed = False
@@ -64,6 +65,17 @@ class StreamParser:
         self.events = 0
         self.rejection = None
         self.blocks: dict[int, str] = {}
+
+    def _restart_gpt_response(self, response_id: str) -> None:
+        """Discard a stale GPT response prefix from a gateway-concatenated stream."""
+        self.parts.clear()
+        self.response = {}
+        self.response_id = response_id
+        self.usage = {}
+        self.finish_reason = None
+        self.completed = False
+        self.saw_done = False
+        self.rejection = None
 
     def feed(self, data: str) -> None:
         if data == "[DONE]":
@@ -91,7 +103,22 @@ class StreamParser:
         if self.mode == "gpt":
             event = value.get("type")
             key = (value.get("output_index", 0), value.get("content_index", 0))
-            if event == "response.output_text.delta":
+            if event == "response.created":
+                response = value.get("response", {})
+                if not isinstance(response, dict):
+                    raise RequestError("invalid_stream")
+                response_id = response.get("id")
+                if response_id is not None and not isinstance(response_id, str):
+                    raise RequestError("invalid_stream")
+                if (response_id and self.response_id and response_id != self.response_id
+                        and not self.completed):
+                    # Some compatibility gateways prepend a short provisional
+                    # response, then append the actual Responses stream.
+                    self._restart_gpt_response(response_id)
+                elif response_id:
+                    self.response_id = response_id
+                self.response = response
+            elif event == "response.output_text.delta":
                 if self.completed:
                     raise RequestError("invalid_stream")
                 self.parts[key] = self.parts.get(key, "") + str(value.get("delta", ""))
@@ -99,12 +126,18 @@ class StreamParser:
                 self.rejection = "response_refused"
             elif event in {"response.failed", "response.incomplete"}:
                 self.response = value.get("response", {})
+                if not isinstance(self.response, dict):
+                    raise RequestError("invalid_stream")
+                if self.response.get("id"):
+                    self.response_id = self.response["id"]
                 self.usage = self.response.get("usage", {}) or {}
                 self.rejection = "response_incomplete"
             elif event == "response.completed":
                 if self.completed:
                     raise RequestError("invalid_stream")
                 response = value.get("response", {})
+                if not isinstance(response, dict):
+                    raise RequestError("invalid_stream")
                 if response.get("status") != "completed":
                     raise RequestError("response_incomplete", retryable=False)
                 final = {}
@@ -119,6 +152,8 @@ class StreamParser:
                         raise RequestError("stream_text_conflict")
                 self.parts = final
                 self.response = response
+                if response.get("id"):
+                    self.response_id = response["id"]
                 self.usage = response.get("usage", {})
                 self.completed = True
         elif self.mode == "claude":

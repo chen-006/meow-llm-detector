@@ -23,9 +23,10 @@ from gpt56_vnext.probability_model import score_counts
 from gpt56_vnext.proxies import ProxyDecision, http_client_options
 from gpt56_vnext.selection import recommend
 from gpt56_vnext.server import AppState
+from gpt56_vnext.security import SecretGuard
 from gpt56_vnext.simulation import sample_matches, predictions
 from gpt56_vnext.store import SQLiteStateStore
-from gpt56_vnext.transport import AsyncTransport
+from gpt56_vnext.transport import AsyncTransport, parse_stream
 
 SECRET = "synthetic-audit-secret"
 BASE = "https://fixture.invalid/v1"
@@ -51,6 +52,25 @@ def transport(handler):
     value = AsyncTransport([SECRET], concurrency=8)
     value._clients[BASE] = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return value
+
+
+class StreamParserTests(unittest.TestCase):
+    def test_gpt_ignores_stale_prefix_when_gateway_restarts_response(self):
+        events = [
+            {"type": "response.created", "response": {"id": "resp-old", "status": "in_progress"}},
+            {"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "delta": " "},
+            {"type": "response.created", "response": {"id": "resp-new", "status": "in_progress"}},
+            {"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "delta": "Mongolia"},
+            {"type": "response.completed", "response": {"id": "resp-new", "status": "completed", "output": [
+                {"type": "message", "content": [{"type": "output_text", "text": "Mongolia"}]},
+            ]}},
+        ]
+        body = "\n\n".join("data: " + json.dumps(event) for event in events) + "\n\n"
+
+        result = parse_stream(body, "gpt", SecretGuard())
+
+        self.assertEqual(result["answer"], "Mongolia")
+        self.assertEqual(result["response_id"], "resp-new")
 
 
 class AuditMathTests(unittest.TestCase):
