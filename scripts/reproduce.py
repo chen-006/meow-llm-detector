@@ -19,9 +19,9 @@ def main():
     parser.add_argument('--quick', action='store_true')
     parser.add_argument('--output', type=Path, default=ROOT / 'reproduction')
     args = parser.parse_args()
-    manifest = json.loads((ROOT / 'gpt56_vnext/baselines/v4.5.0/manifest.json').read_text())
+    manifest = json.loads((ROOT / 'gpt56_vnext/baselines/v4.5.1/manifest.json').read_text())
     for item in manifest['packages']:
-        package = load_package((ROOT / 'gpt56_vnext/baselines/v4.5.0' / item['file']).read_bytes())
+        package = load_package((ROOT / 'gpt56_vnext/baselines/v4.5.1' / item['file']).read_bytes())
         if args.mode and package['mode'] != args.mode:
             continue
         for tier, expected in package['calibration']['tiers'].items():

@@ -1,6 +1,16 @@
 // One interface and one translation catalog; benchmark prompts are never translated.
 let locale = document.documentElement.lang === "en" ? "en" : "zh-CN";
 const english = {
+  "尚无有效样本":"No valid samples yet",
+  "样本还不够，结果仅供参考":"Not enough samples; indicative results only",
+  "样本已达标，按当前答案判定":"Sample requirements met; verdict uses current answers",
+  "{count} 项尚未达到最低样本量。":"{count} probes are below the minimum sample count.",
+  "{name}：{valid}/{planned}，至少{minimum}":"{name}: {valid}/{planned}, minimum {minimum}",
+  "查看明细":"View details", "失败次数包含重试。":"Failure counts include retries.",
+  "已切回历史采集地址，请输入该地址的 Key 后再次恢复。": "Restored the historical endpoint. Enter its key, then resume again.",
+  "允许明文 HTTP（仅可信网络，Key 不加密）": "Allow plain HTTP (trusted networks only; key is not encrypted)",
+  "有效请求不足（低于60%）": "Insufficient valid responses (below 60%)",
+  "单项有效样本不足（低于60%）": "Insufficient per-probe samples (below 60%)",
   "基准采集网址（API 根地址）": "Benchmark collection URL (API base)",
   "本次检测网址（API 根地址）": "This run's URL (API base)",
   "当前模型已模拟 {count} 批": "{count} batches simulated for the current model",
@@ -300,6 +310,10 @@ const messages = {
   collection_window_gap_not_elapsed: ["前一窗结束后尚未满1分钟", "Wait at least 1 minute after the previous window ends"],
   prior_collection_required: ["请选择同配置的上一完成窗口", "Select the previous completed window with the same contract"],
   session_already_running: ["该会话仍在运行", "This session is already running"],
+  invalid_answer: ["答案无法解析为有效样本（按设置重试）", "Answer is not a valid sample (retries follow your setting)"],
+  response_token_limit: ["上游输出额度耗尽，响应未完成", "Upstream output token limit reached"],
+  response_filtered: ["上游内容过滤，响应未完成", "Upstream response filtered"],
+  upstream_response_failed: ["上游报告处理失败", "Upstream reported response failure"],
   request_timeout: ["请求超时，未当作模型身份异常", "Request timed out; this is not identity evidence"],
   connection_error: ["连接失败", "Connection failed"], runtime_failure: ["执行或持久化失败，已停止", "Execution or persistence failed; stopped"],
   catalog_unavailable: ["在线目录尚未发布或暂时不可用", "The online catalog is unpublished or unavailable"],

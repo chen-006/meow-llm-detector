@@ -1,0 +1,35 @@
+name: Build v4.5.1 release candidates
+on:
+  workflow_dispatch:
+  push:
+    tags: [v4.5.1]
+permissions:
+  contents: read
+jobs:
+  archives:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements.txt
+      - run: python -B -m unittest discover -s tests -v
+      - run: node tests/v451_ui.cjs
+      - run: python -B scripts/reproduce.py --check-only
+      - run: python -B scripts/build_release.py --output dist
+      - run: python -B scripts/build_windows_portable.py --source . --source-commit $env:GITHUB_SHA --output portable-dist
+      - run: python -B scripts/verify_windows_portable.py portable-dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v4.5.1-verified-candidates
+          path: |
+            dist/*
+            portable-dist/*
+          if-no-files-found: error
+          retention-days: 30
+# Build only. Publication is a separate verified release step, never an old-asset refresh.

@@ -48,7 +48,7 @@ class AppState:
             self.store = SQLiteStateStore(self.root / "state.sqlite3")
             resources.callback(self.store.close)
             self.store.interrupt_active_sessions()
-            self.catalog = BenchmarkCatalog(self.root / "benchmarks", Path(__file__).with_name("baselines") / "v4.5.0" if bundled else None)
+            self.catalog = BenchmarkCatalog(self.root / "benchmarks", Path(__file__).with_name("baselines") / "v4.5.1" if bundled else None)
             self.presets = EndpointPresets(self.store)
             self.updates = ProgramUpdates(self.root / "updates", self.store)
             self.active = {}
@@ -118,6 +118,8 @@ class AppState:
                 self.catalog.check_withdrawal(source)
         else:
             config = {**connection, "runtime": body.get("runtime", {})}
+            if kind == "detection":
+                config["sample_ratio"] = .6
             if kind == "detection":
                 source = self.catalog.get(body.get("package_id"), body.get("package_version"))
                 config["benchmark_publisher"] = next(item["publisher"] for item in self.catalog.local() if item["id"] == source["id"] and item["version"] == source["version"])
@@ -233,7 +235,7 @@ class AppState:
                 "schedule": self.schedule.status(), "calibration": self.calibration}
 
     def snapshot(self):
-        return {**self.status(), "version": "4.5.0", "brand": "meow LLM Detector", "packages": self.catalog.local(),
+        return {**self.status(), "version": "4.5.1", "brand": "meow LLM Detector", "packages": self.catalog.local(),
                 "endpoints": self.presets.list(), "projects": self.store.documents("project"), "catalog": self.catalog.index()}
 
     @staticmethod
@@ -373,7 +375,7 @@ class Handler(BaseHTTPRequestHandler):
                 name, content_type = ASSETS[path]
                 self._send((WEB_ROOT / name).read_bytes(), content_type=content_type, bootstrap=path == "/")
             elif path == "/api/bootstrap":
-                self._send({"token": self.server.token, "version": "4.5.0", "locale": self.server.state.locale, "seed_pool": seed_summary(), "tier_defaults": DEFAULT_TIER_COUNTS}, bootstrap=True)
+                self._send({"token": self.server.token, "version": "4.5.1", "locale": self.server.state.locale, "seed_pool": seed_summary(), "tier_defaults": DEFAULT_TIER_COUNTS}, bootstrap=True)
             elif path == "/api/snapshot":
                 self._send(self.server.state.snapshot())
             elif path == "/api/status":
@@ -435,7 +437,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/collection/start":
                 result = {"session_id": state.call(state.start_run("collection", body))}
             elif path == "/api/collection/profile":
-                provider = recognized_provider(normalize_api_base_url(body.get("base_url", "")))
+                provider = recognized_provider(normalize_api_base_url(body.get("base_url", ""), allow_insecure=body.get("allow_insecure") is True))
                 result = {"provider": provider, "max_in_flight": 4 if provider == "openrouter" else None}
             elif path == "/api/candidates/generate":
                 result = state.call(state.generate(body), timeout=130)

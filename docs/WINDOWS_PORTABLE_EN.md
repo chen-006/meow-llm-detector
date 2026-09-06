@@ -1,4 +1,4 @@
-# meow LLM Detector v4.5.0 · Windows portable edition
+# meow LLM Detector v4.5.1 · Windows portable edition
 
 For Windows 10 / 11, Intel / AMD 64-bit (x64). Includes Python 3.13.15 and all application dependencies. No Python installation, PATH changes or first-run dependency downloads. Model API calls still require a network connection.
 
@@ -8,6 +8,6 @@ For Windows 10 / 11, Intel / AMD 64-bit (x64). Includes Python 3.13.15 and all a
 
 Data lives in `meow_runs`. Stop the old backend before copying this folder into a new installation. Keys in Windows Credential Manager do not move to another PC with the folder.
 
-The detection core and benchmarks match standard v4.5.0; no recalibration is needed. For macOS / Linux, use the original source archives. Installation instructions in `README_SOURCE_EN.md` apply only to source packages; portable users should run `start.bat`, not `launch.py`.
+The detection core and benchmarks match standard v4.5.1; no recalibration is needed. For macOS / Linux, use the original source archives. Installation instructions in `README_SOURCE_EN.md` apply only to source packages; portable users should run `start.bat`, not `launch.py`.
 
 Build information: `PORTABLE_BUILD.json`. File checksums: `SHA256SUMS.txt`. Python license: `portable-python/LICENSE.txt`; dependency licenses remain in their `.dist-info` directories. Statistical limitations: `TECHNICAL_REPORT_EN.md`.

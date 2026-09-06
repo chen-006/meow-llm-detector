@@ -2,7 +2,7 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>meow LLM Detector</title><link rel="stylesheet" href="/assets/style.css"></head>
 <body>
 <header class="app-header">
-  <div class="brand"><svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 17V7l10 6h4l10-6v10c5 14-1 18-12 18S3 31 8 17Z"/><path d="M13 22h2m10 0h2m-9 5 2 2 2-2"/></svg><div><strong>meow</strong><small>LLM DETECTOR</small></div><span class="version-badge">4.5.0 · PREVIEW</span></div>
+  <div class="brand"><svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 17V7l10 6h4l10-6v10c5 14-1 18-12 18S3 31 8 17Z"/><path d="M13 22h2m10 0h2m-9 5 2 2 2-2"/></svg><div><strong>meow</strong><small>LLM DETECTOR</small></div><span class="version-badge">4.5.1</span></div>
   <div class="header-meta"><span class="preview-label">开发预览 · 非最终版</span><button id="quick-update" class="header-update" type="button">检查更新</button><span id="service-state">连接中</span></div>
 </header>
 <main>
@@ -19,7 +19,7 @@
 </section>
 <section class="panel"><div class="section-heading"><span class="step-number">02</span><div><h2>连接待测 API</h2></div></div>
 <label>使用已保存的 API 连接<select id="endpoint-preset"><option value="">仅本次手动输入</option></select></label>
-<div class="grid connection-fields"><label class="wide">API 地址<input id="base-url" placeholder="https://your-provider.com/v1" autocomplete="off"><small>粘贴服务商提供的 API 基地址。</small></label><label class="wide">API key<input id="key" type="password" autocomplete="off" placeholder="本次使用，不会写入普通文件"><small>检测结束后保留在本页；页面关闭或后台断开后清空。保存连接使用系统凭据库。</small></label><label class="wide">实际请求模型<input id="request-model" autocomplete="off" placeholder="服务商要求的模型名"><small>这是发给服务商的模型别名，可以和上方模型名称不同。</small></label></div>
+<div class="grid connection-fields"><label class="wide">API 地址<input id="base-url" placeholder="https://your-provider.com/v1" autocomplete="off"><small>粘贴服务商提供的 API 基地址。</small></label><label class="wide"><span><input id="allow-http" type="checkbox"> 允许明文 HTTP（仅可信网络，Key 不加密）</span></label><label class="wide">API key<input id="key" type="password" autocomplete="off" placeholder="本次使用，不会写入普通文件"><small>检测结束后保留在本页；页面关闭或后台断开后清空。保存连接使用系统凭据库。</small></label><label class="wide">实际请求模型<input id="request-model" autocomplete="off" placeholder="服务商要求的模型名"><small>这是发给服务商的模型别名，可以和上方模型名称不同。</small></label></div>
 <button id="save-current-connection" class="text-button">保存这条 API 连接，下次不用再填 →</button>
 </section>
 <details class="panel advanced-panel"><summary><span>高级设置</span><small>并发、重试与定时检测</small></summary>
@@ -28,7 +28,7 @@
 </details></div>
 <aside class="run-column"><section class="panel run-card"><h2>本次检测</h2><label>检测档位<select id="tier"><option value="low">快速</option><option value="medium">标准</option><option value="high">深入</option></select></label><div class="request-metric"><strong id="request-count">—</strong><span>次指纹请求</span></div><p id="detect-estimate" class="muted"></p><div id="readiness" class="readiness">请选择基准包。</div><label class="check retention-choice"><input id="retain-raw" type="checkbox"><span>保留请求与响应<small>保存到本机，不保存 API key。</small></span></label><p id="start-error" class="action-error" role="alert" tabindex="-1"></p><button id="start" class="primary" disabled>开始检测 →</button><button id="stop" class="secondary-stop" disabled>停止</button><div class="privacy-note"><span aria-hidden="true">⌁</span><span>key 只发送给你指定的 API；基准包不能更改连接地址。</span></div></section>
 <section class="legend-card"><h3>如何理解结果</h3><p><span class="legend-dot green"></span><b>强指向申报模型</b></p><p><span class="legend-dot yellow"></span><b>证据不足</b></p><p><span class="legend-dot red"></span><b>强指向其他候选模型</b></p><small>网络错误和缺样不是“假模型”的证据。</small></section></aside></div>
-<section class="panel result-panel"><div class="section-heading"><span class="step-number">03</span><div><h2>检测结果</h2></div></div><div id="report-placeholder" class="empty-result"><span class="fingerprint-icon" aria-hidden="true">◎</span><h3>暂无检测结果</h3></div><div id="progress" class="status">尚未开始</div><div class="meter"><span id="meter-bar"></span></div><p id="schedule-status"></p><button id="schedule-pause" class="text-button" hidden>暂停后续计划</button><div id="verdict" class="verdict" hidden></div><p id="report-summary"></p><div id="match-bars"></div><div class="evidence-actions"><button id="retention-export" class="text-button" hidden>导出本次留存证据</button><details><summary>完整证据与机器报告</summary><pre id="report"></pre></details></div></section>
+<section class="panel result-panel"><div class="section-heading"><span class="step-number">03</span><div><h2>检测结果</h2></div></div><div id="report-placeholder" class="empty-result"><span class="fingerprint-icon" aria-hidden="true">◎</span><h3>暂无检测结果</h3></div><div id="progress" class="status">尚未开始</div><div class="meter"><span id="meter-bar"></span></div><p id="schedule-status"></p><button id="schedule-pause" class="text-button" hidden>暂停后续计划</button><div id="verdict" class="verdict" hidden></div><p id="report-summary"></p><div id="report-note" class="report-note" hidden></div><div id="match-bars"></div><div class="evidence-actions"><button id="retention-export" class="text-button" hidden>导出本次留存证据</button><details><summary>完整证据与机器报告</summary><pre id="report"></pre></details></div></section>
 <section class="panel history-panel"><h2>最近的检测</h2><p class="muted">打开历史报告，或从原配置恢复尚未完成的检测。</p><div id="run-history"></div></section>
 </div>
 <div id="make-view" class="workspace" hidden>
@@ -66,6 +66,7 @@
 </section>
 <section class="panel"><h2>3. 可信采集</h2><div class="grid">
 <label>可信 API 地址<input id="collect-url" placeholder="https://openrouter.ai/api/v1"></label>
+<label><span><input id="collect-http" type="checkbox"> 允许明文 HTTP（仅可信网络，Key 不加密）</span></label>
 <label>临时 key<input id="collect-key" type="password" autocomplete="off"></label>
 <label>每模型每题本窗次数<input id="collect-samples" type="number" min="1" max="1000" value="3"></label>
 <label>本次时间窗<input id="collect-window" type="number" min="1" value="1"></label></div>
@@ -96,6 +97,7 @@
 <label>协议<select id="preset-mode"><option value="gpt">GPT · Responses</option><option value="claude">Claude · Messages</option><option value="chat">其他 · Chat</option></select></label>
 <label>模型别名<input id="preset-model"></label>
 <label class="wide">API 基地址<input id="preset-url" placeholder="https://example.com/v1"></label>
+<label><span><input id="preset-http" type="checkbox"> 允许明文 HTTP（仅可信网络，Key 不加密）</span></label>
 <label class="wide">新 key（留空保留已有凭据）<input id="preset-key" type="password" autocomplete="off"></label></div>
 <p class="muted">更换地址时必须重新提供 key。已有定时计划使用独立凭据，不受预设修改或删除影响。</p>
 <div class="actions"><button id="preset-save">保存到系统凭据库</button><button id="preset-delete">删除所选连接及凭据</button><button id="preset-export">导出非秘密连接配置</button></div>

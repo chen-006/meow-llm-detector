@@ -1,4 +1,4 @@
-"""Build Windows x64 portable ZIPs from the pinned, published v4.5.0 source."""
+"""Build Windows x64 portable ZIPs from an explicitly verified clean source commit."""
 import argparse
 import hashlib
 import importlib.metadata
@@ -14,7 +14,6 @@ import urllib.request
 import zipfile
 
 TOOLS_ROOT = Path(__file__).resolve().parents[1]
-SOURCE_SHA = '67ea19892c5d75ba2076c08e19229d1d4b7184fa'
 PYTHON_VERSION = '3.13.15'
 PYTHON_URL = f'https://www.python.org/ftp/python/{PYTHON_VERSION}/python-{PYTHON_VERSION}-embed-amd64.zip'
 PYTHON_SHA256 = 'd1f04d990aee1253d8569e8e5104e30fa9f5fa830899f14843448872d936a2cf'
@@ -30,15 +29,17 @@ def write(path, value):
     path.write_bytes(value.encode('utf-8') if isinstance(value, str) else value)
 
 
-def build(source, output):
+def build(source, output, source_commit):
     if os.name != 'nt' or sys.version_info[:2] != (3, 13):
         raise SystemExit('Build with 64-bit Python 3.13 on Windows')
     import struct
     assert struct.calcsize('P') == 8
-    assert subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip() == SOURCE_SHA
+    assert subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip() == source_commit
     assert not subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain'], text=True).strip()
     source_files = runpy.run_path(str(source / 'scripts/build_release.py'))['release_files'](source)
-    assert source_files['VERSION'].strip() == b'4.5.0'
+    version = source_files['VERSION'].decode('ascii').strip()
+    if version != '4.5.1':
+        raise ValueError('This release builder requires version 4.5.1')
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as work:
         work = Path(work)
@@ -64,7 +65,7 @@ def build(source, output):
             shutil.rmtree(cache)
         packages = sorted(({'name': d.metadata['Name'], 'version': d.version}
                            for d in importlib.metadata.distributions(path=[str(site_packages)])), key=lambda p: p['name'].lower())
-        manifest = {'source_commit': SOURCE_SHA, 'builder_commit': os.environ.get('GITHUB_SHA'),
+        manifest = {'source_commit': source_commit, 'builder_commit': os.environ.get('GITHUB_SHA'),
                     'python_version': PYTHON_VERSION, 'python_url': PYTHON_URL,
                     'python_sha256': PYTHON_SHA256, 'platform': 'windows-x64',
                     'packages': packages, 'wheels': {p.name: digest(p) for p in sorted(wheels.glob('*.whl'))}}
@@ -75,7 +76,7 @@ def build(source, output):
         manifest['installation'] = install_report
         checksums = []
         for locale, language in [('zh-CN', 'CN'), ('en', 'EN')]:
-            name = f'meow-llm-detector-v4.5.0-windows-x64-portable-{locale}'
+            name = f'meow-llm-detector-v{version}-windows-x64-portable-{locale}'
             folder = work / name
             folder.mkdir()
             for filename, raw in source_files.items():
@@ -115,5 +116,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--source-commit', required=True, help='Expected full commit SHA; source tree must be clean')
     args = parser.parse_args()
-    build(args.source.resolve(), args.output.resolve())
+    build(args.source.resolve(), args.output.resolve(), args.source_commit)

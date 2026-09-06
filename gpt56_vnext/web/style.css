@@ -55,3 +55,9 @@ main { max-width:1512px; margin:auto; padding:46px 48px 80px 254px }
 .match-row progress::-webkit-progress-value { background:#69caff; border-radius:7px }
 .match-row progress::-moz-progress-bar { background:#69caff; border-radius:7px }
 #report-summary { white-space: pre-line; overflow-wrap: anywhere; }
+#progress, #valid-samples, #collect-progress { font-size:15px; font-weight:600 }
+.report-note{margin:18px 0;padding:16px 18px;background:#1d3030;border:1px solid #365353;border-radius:12px;color:#d6ece7;font-size:15px;line-height:1.65}
+.report-note-heading{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.report-note-heading strong{font-size:17px;font-weight:600}.report-note-status{font-size:13px;color:#8ad9cc}
+.report-note p{font-size:14px;margin:7px 0;color:#a9c7bf}.report-note details{margin-top:10px;font-size:14px}.report-note summary{color:#8ad9cc}
+.report-note small{display:block;margin-top:8px;color:#a9c7bf}

@@ -1,4 +1,4 @@
-# meow LLM 检测器 v4.5.0 · Windows 便携版
+# meow LLM 检测器 v4.5.1 · Windows 便携版
 
 适用 Windows 10 / 11，Intel / AMD 64 位（x64）。内置 Python 3.13.15 和全部项目依赖，无需另装 Python、配置 PATH 或首次联网安装依赖；调用模型 API 仍需联网。
 
@@ -8,6 +8,6 @@
 
 数据保存在 `meow_runs`。升级请先关闭旧后台，再向新目录迁移该文件夹；系统凭据库里的 Key 不随文件夹迁移到另一台电脑。
 
-此包与普通 v4.5.0 的检测核心和基准相同，无需重新校准。macOS / Linux 请下载原源码包。`README_SOURCE_CN.md` 中的安装步骤仅用于源码包；便携版请使用 `start.bat`，无需运行 `launch.py`。
+此包与普通 v4.5.1 的检测核心和基准相同，无需重新校准。macOS / Linux 请下载原源码包。`README_SOURCE_CN.md` 中的安装步骤仅用于源码包；便携版请使用 `start.bat`，无需运行 `launch.py`。
 
 构建信息见 `PORTABLE_BUILD.json`，包内校验见 `SHA256SUMS.txt`；Python 许可位于 `portable-python/LICENSE.txt`，依赖许可随各 `.dist-info` 目录保留。算法与统计限制见 `TECHNICAL_REPORT_CN.md`。

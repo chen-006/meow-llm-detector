@@ -51,6 +51,13 @@ def build_payload(mode: str, model: str, cell: dict) -> dict:
     raise AppError("invalid_mode")
 
 
+def incomplete_code(reason):
+    # Fixed public codes, never expose arbitrary upstream text.
+    return {"max_output_tokens": "response_token_limit", "max_tokens": "response_token_limit",
+            "length": "response_token_limit", "content_filter": "response_filtered",
+            "server_error": "upstream_response_failed"}.get(reason, "response_incomplete")
+
+
 class StreamParser:
     def __init__(self, mode: str):
         self.mode = mode
@@ -100,13 +107,14 @@ class StreamParser:
             elif event in {"response.failed", "response.incomplete"}:
                 self.response = value.get("response", {})
                 self.usage = self.response.get("usage", {}) or {}
-                self.rejection = "response_incomplete"
+                self.rejection = incomplete_code((self.response.get("incomplete_details") or {}).get("reason")
+                    or (self.response.get("error") or {}).get("code"))
             elif event == "response.completed":
                 if self.completed:
                     raise RequestError("invalid_stream")
                 response = value.get("response", {})
                 if response.get("status") != "completed":
-                    raise RequestError("response_incomplete", retryable=False)
+                    raise RequestError(incomplete_code(self.finish_reason))
                 final = {}
                 for output_index, item in enumerate(response.get("output", [])):
                     for content_index, part in enumerate(item.get("content", [])):
@@ -140,7 +148,7 @@ class StreamParser:
                 if block.get("type") == "text":
                     self.parts[(value.get("index", 0), 0)] = block.get("text", "")
                 elif block.get("type") in {"tool_use", "server_tool_use"}:
-                    raise RequestError("unexpected_tool", retryable=False)
+                    raise RequestError("unexpected_tool")
             elif event == "content_block_delta":
                 if not self.message_started or self.completed:
                     raise RequestError("invalid_stream")
@@ -166,7 +174,7 @@ class StreamParser:
                     raise RequestError("invalid_stream")
                 self.completed = self.finish_reason in {"end_turn", "stop_sequence"}
                 if not self.completed:
-                    self.rejection = "response_incomplete"
+                    self.rejection = incomplete_code(self.finish_reason)
                 self.response["openrouter_metadata"] = value.get("openrouter_metadata", {})
         else:
             self.response.update({key: value[key] for key in ("id", "model", "provider") if key in value})
@@ -177,9 +185,9 @@ class StreamParser:
                     raise RequestError("unexpected_choice")
                 delta = choice.get("delta", {})
                 if delta.get("refusal"):
-                    raise RequestError("response_refused", retryable=False)
+                    raise RequestError("response_refused")
                 if delta.get("tool_calls"):
-                    raise RequestError("unexpected_tool", retryable=False)
+                    raise RequestError("unexpected_tool")
                 if delta.get("content"):
                     if self.completed:
                         raise RequestError("invalid_stream")
@@ -187,12 +195,12 @@ class StreamParser:
                 if choice.get("finish_reason") is not None:
                     self.finish_reason = choice["finish_reason"]
                     if self.finish_reason != "stop":
-                        raise RequestError("response_incomplete", retryable=False)
+                        raise RequestError(incomplete_code(self.finish_reason))
                     self.completed = True
 
     def finish(self) -> dict:
         if self.rejection:
-            raise RequestError(self.rejection, retryable=False, evidence=self.evidence())
+            raise RequestError(self.rejection, evidence=self.evidence())
         if not self.completed or (self.mode == "chat" and not self.saw_done):
             raise RequestError("truncated_stream", evidence=self.evidence())
         answer = "".join(value for _, value in sorted(self.parts.items()))
@@ -209,10 +217,10 @@ class StreamParser:
 def normalize_usage(usage: dict) -> dict:
     usage = usage or {}
     if not isinstance(usage, dict):
-        raise RequestError("invalid_usage", retryable=False)
+        raise RequestError("invalid_usage")
     details = usage.get("output_tokens_details") or usage.get("completion_tokens_details") or {}
     if not isinstance(details, dict):
-        raise RequestError("invalid_usage", retryable=False)
+        raise RequestError("invalid_usage")
     result = {
         "input_tokens": usage.get("input_tokens", usage.get("prompt_tokens")),
         "output_tokens": usage.get("output_tokens", usage.get("completion_tokens")),
@@ -223,30 +231,46 @@ def normalize_usage(usage: dict) -> dict:
         if value is None:
             continue
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
-            raise RequestError("invalid_usage", retryable=False)
+            raise RequestError("invalid_usage")
         if name != "cost" and type(value) is not int:
-            raise RequestError("invalid_usage", retryable=False)
+            raise RequestError("invalid_usage")
     return result
 
 
 def parse_stream(decoded: str, mode: str, guard: SecretGuard) -> dict:
+    """Frame once; GPT uses the last response segment, never a prior fallback."""
     parser = StreamParser(mode)
-    data_lines = []
+    data_lines, events = [], []
+    response_id = None
     try:
         for line in decoded.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
             if not line:
-                if data_lines:
-                    event = "\n".join(data_lines)
-                    if len(event.encode("utf-8")) > MAX_SSE_EVENT_BYTES:
-                        raise RequestError("response_too_large", retryable=False)
-                    if event != "[DONE]":
-                        guard.check(strict_json_loads(event))
-                    parser.feed(event)
-                    data_lines.clear()
+                if not data_lines:
+                    continue
+                event = "\n".join(data_lines)
+                data_lines.clear()
+                if len(event.encode("utf-8")) > MAX_SSE_EVENT_BYTES:
+                    raise RequestError("response_too_large")
+                guard.check(event)
+                try:
+                    value = strict_json_loads(event) if event != "[DONE]" else None
+                except AppError:
+                    value = None  # A malformed selected segment still fails in StreamParser.
+                if value is not None:
+                    guard.check(value)
+                response = value.get("response") if isinstance(value, dict) else None
+                identity = response.get("id") if isinstance(response, dict) else None
+                if mode == "gpt" and isinstance(identity, str) and identity and identity != response_id:
+                    if response_id is not None or value.get("type") == "response.created":
+                        events.clear()
+                    response_id = identity
+                events.append(event)
             elif line.startswith("data:"):
                 data_lines.append(line[5:].removeprefix(" "))
         if data_lines:
             raise RequestError("truncated_stream")
+        for event in events:
+            parser.feed(event)
         return parser.finish()
     except RequestError as exc:
         if not exc.evidence and exc.code != "credential_echo":
@@ -254,7 +278,6 @@ def parse_stream(decoded: str, mode: str, guard: SecretGuard) -> dict:
         raise
     except (AppError, KeyError, TypeError, ValueError, AttributeError) as exc:
         raise RequestError("invalid_stream") from exc
-
 
 class AsyncTransport:
     def __init__(self, secrets: list[str] = (), *, timeout: float = 120, concurrency: int = 32, gates=None):
@@ -281,8 +304,7 @@ class AsyncTransport:
 
     async def request(self, mode: str, base_url: str, key: str, model: str, cell: dict,
                       *, allow_insecure: bool = False, on_dispatch=None) -> dict:
-        async with self._slots:
-            return await self._request(mode, base_url, key, model, cell, allow_insecure=allow_insecure, on_dispatch=on_dispatch)
+        return await self._request(mode, base_url, key, model, cell, allow_insecure=allow_insecure, on_dispatch=on_dispatch)
 
     async def _request(self, mode: str, base_url: str, key: str, model: str, cell: dict,
                       *, allow_insecure: bool = False, on_dispatch=None) -> dict:
@@ -308,7 +330,7 @@ class AsyncTransport:
                 "headers": response_headers, "http_status": status, "body_complete": body_complete})
 
         try:
-            async with asyncio.timeout(self.timeout):
+            async with self._slots, asyncio.timeout(self.timeout):
                 path = {"gpt":"/responses", "claude":"/messages", "chat":"/chat/completions"}[mode]
                 headers = {"Authorization": "Bearer " + key, "Content-Type":"application/json",
                            "Accept":"text/event-stream", "User-Agent": {"gpt": GPT_USER_AGENT, "claude": CLAUDE_USER_AGENT}.get(mode, "meow-llm-detector/4.5.0")}
@@ -324,7 +346,7 @@ class AsyncTransport:
                     async for chunk in response.aiter_bytes():
                         if len(raw) + len(chunk) > MAX_RESPONSE_BYTES:
                             raw.extend(chunk[:MAX_RESPONSE_BYTES - len(raw)])
-                            raise RequestError("response_too_large", retryable=False)
+                            raise RequestError("response_too_large")
                         raw.extend(chunk)
                 body_complete = True
                 raw = bytes(raw)
@@ -339,7 +361,7 @@ class AsyncTransport:
                     except AppError:
                         evidence = {}
                     raise RequestError("redirect_rejected" if status and 300 <= status < 400 else "upstream_http_error",
-                                       status=status, retryable=not (status and 300 <= status < 400),
+                                       status=status,
                                        headers=response_headers, evidence=evidence)
                 result = parse_stream(decoded, mode, guard)
                 guard.check(result)

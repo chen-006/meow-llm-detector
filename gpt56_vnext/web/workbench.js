@@ -124,7 +124,13 @@ async function restoreCollectionHistory() {
       const resume = el("button", t("恢复本窗"));
       resume.addEventListener("click", async () => {
         try {
-          const result = await post("/api/collection/start", {resume_id: row.session_id, base_url: row.base_url, key: $("collect-key").value});
+          if ($("collect-url").value.trim().replace(/\/$/, "") !== row.base_url.replace(/\/$/, "")) {
+            $("collect-url").value = row.base_url;
+            $("collect-key").value = "";
+            throw Error(t("已切回历史采集地址，请输入该地址的 Key 后再次恢复。"));
+          }
+          const result = await post("/api/collection/start", {resume_id: row.session_id, base_url: $("collect-url").value.trim(),
+            allow_insecure: $("collect-http").checked, key: $("collect-key").value});
           workbench.active = result.session_id;
           if (!workbench.sessions.includes(result.session_id)) workbench.sessions.push(result.session_id);
           clearInterval(workbench.timer); workbench.timer = setInterval(pollCollection, 1500);
@@ -133,6 +139,7 @@ async function restoreCollectionHistory() {
       });
       item.append(resume);
     }
+    item.append(el("small", row.base_url));
     $("collection-history").append(item);
   }
   $("collect-ready-at").textContent = latest ? t("下一窗最早开始时间：{time}；等待期间不会发送请求。", {time: new Date(latest.next_due * 1000).toLocaleString()}) : "";
@@ -373,6 +380,7 @@ $("save-current-connection").addEventListener("click", () => {
   $("preset-edit").value = "";
   $("preset-mode").value = $("mode").value;
   $("preset-url").value = $("base-url").value;
+  $("preset-http").checked = $("allow-http").checked;
   $("preset-model").value = $("request-model").value;
   $("preset-key").value = $("key").value;
   $("preset-name").value = "";
@@ -384,12 +392,13 @@ $("collect-samples").addEventListener("input", estimateCollection);
 let profileTimer;
 $("collect-url").addEventListener("input", () => {
   clearTimeout(profileTimer);
+  $("collect-key").value = "";
   const address = $("collect-url").value;
   $("collect-profile").textContent = "";
   if (!address.trim()) return;
   profileTimer = setTimeout(async () => {
     try {
-      const profile = await post("/api/collection/profile", {base_url: address});
+      const profile = await post("/api/collection/profile", {base_url: address, allow_insecure: $("collect-http").checked});
       if (address === $("collect-url").value && profile.provider === "openrouter") $("collect-profile").textContent = t("已识别 OpenRouter：共享并发最多4，遇到限流按响应头等待。基准会保留来源标识。");
     } catch (error) { if (address === $("collect-url").value) $("collect-profile").textContent = errorMessage(error); }
   }, 300);
@@ -497,7 +506,7 @@ action("collect-start", async () => {
   if (workbench.timer) throw Error(t("当前窗口仍在采集。"));
   if (!$("collect-consent").checked) throw Error(t("请确认采集请求数量与费用。"));
   const draft = await post("/api/project/save", {project: syncDraftModels(), selected: [...workbench.selected]});
-  const result = await post("/api/collection/start", {project: draft, base_url: $("collect-url").value,
+  const result = await post("/api/collection/start", {project: draft, base_url: $("collect-url").value, allow_insecure: $("collect-http").checked,
     key: $("collect-key").value, samples: Number($("collect-samples").value), window: Number($("collect-window").value),
     prior_session_id: workbench.sessions.at(-1), probe_ids: [...workbench.selected]});
   workbench.draft = draft;
@@ -622,13 +631,14 @@ $("preset-edit").addEventListener("change", () => {
   $("preset-name").value = item?.name || "";
   $("preset-mode").value = item?.mode || "gpt";
   $("preset-url").value = item?.base_url || "";
+  $("preset-http").checked = item?.allow_insecure === true;
   $("preset-model").value = item?.model || "";
   $("preset-key").value = "";
 });
 action("preset-save", async () => {
   await post("/api/endpoint/save", {preset: {id: $("preset-edit").value || undefined,
     name: $("preset-name").value, mode: $("preset-mode").value,
-    base_url: $("preset-url").value, model: $("preset-model").value}, key: $("preset-key").value || undefined});
+    base_url: $("preset-url").value, allow_insecure: $("preset-http").checked, model: $("preset-model").value}, key: $("preset-key").value || undefined});
   $("preset-key").value = "";
   await refreshWorkbench(); renderPresets();
   $("preset-notice").textContent = t("连接已保存；key只写入系统凭据库。");
@@ -669,10 +679,11 @@ action("program-download", async () => {
 
 action("retention-export", async () => {
   if (!state.sessionId) throw Error(t("请先打开一份检测报告。"));
+  const sessionId = state.sessionId;
   const records = [];
   let after = 0, bytes = 0, coverage;
   while (true) {
-    const page = await json(`/api/retention/${encodeURIComponent(state.sessionId)}?after=${after}`);
+    const page = await json(`/api/retention/${encodeURIComponent(sessionId)}?after=${after}`);
     coverage = page.coverage;
     if (!page.records.length) break;
     bytes += new TextEncoder().encode(JSON.stringify(page.records)).length;
@@ -681,5 +692,5 @@ action("retention-export", async () => {
     after = page.records.at(-1).attempt_id;
   }
   if (!records.length) throw Error(t("本次没有留存正文；未开启留存或请求在响应前中断。"));
-  download({session_id: state.sessionId, coverage, records}, `meow-evidence-${state.sessionId}.json`);
+  download({session_id: sessionId, coverage, records}, `meow-evidence-${sessionId}.json`);
 }, "progress");

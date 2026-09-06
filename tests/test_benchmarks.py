@@ -119,6 +119,9 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(score_counts(fitted, observed, plan, thresholds, claimed_model="a")["color"], "green")
         self.assertEqual(score_counts(fitted, observed, plan, thresholds, claimed_model="b")["color"], "red")
         observed["bc"] = {"a": 2}
+        self.assertEqual(score_counts(fitted, observed, plan, thresholds, claimed_model="b")["color"], "red")
+        self.assertEqual(score_counts(fitted, observed, plan, thresholds, claimed_model="b", completion_ratio=.9)["color"], "yellow")
+        observed["bc"] = {"a": 1}
         self.assertEqual(score_counts(fitted, observed, plan, thresholds, claimed_model="b")["color"], "yellow")
         self.assertEqual(score_counts(fitted, observed, plan, {}, claimed_model="a")["color"], "yellow")
 

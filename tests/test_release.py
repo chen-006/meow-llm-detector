@@ -29,7 +29,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_offline_bundles_requests_and_invalid_gate(self):
         with tempfile.TemporaryDirectory() as folder:
-            catalog = BenchmarkCatalog(Path(folder), ROOT / 'gpt56_vnext/baselines/v4.5.0')
+            catalog = BenchmarkCatalog(Path(folder), ROOT / 'gpt56_vnext/baselines/v4.5.1')
             for item in catalog.local():
                 self.assertEqual(item['publisher'], 'maintainer')
                 package = catalog.get(item['id'], item['version'])

@@ -1341,9 +1341,9 @@ Normalizer: `exact_trimmed_casefold`
 }
 ```
 
-## meow-claude-baseline 4.5.0-rc3
+## meow-claude-baseline 4.5.1-rc1
 
-content_sha256: `cce1a377deaa8909c89e2ef2611aeb7e11e14983658d71344831a67c44e32d8e`
+content_sha256: `2be6a59d8c39bd0c8116de35f0cf6d6aa518ac430cb5c68b5ccbd709169e3745`
 
 ### CL011
 
@@ -1711,172 +1711,6 @@ Normalizer: `exact_trimmed_casefold`
 }
 ```
 
-### CL039
-
-不要思考，直接回答。从再见、后来、结束、未完中选一个词，只回答所选词。
-
-Normalizer: `exact_trimmed_casefold`
-
-```json
-{
-  "categories": [
-    "__OTHER__",
-    "再见",
-    "后来",
-    "後來",
-    "後来",
-    "未完"
-  ],
-  "model_counts": {
-    "claude-fable-5.1": {
-      "未完": 92,
-      "后来": 8
-    },
-    "claude-opus-5": {
-      "未完": 100
-    },
-    "claude-sonnet-5": {
-      "后来": 75,
-      "未完": 17,
-      "後来": 4,
-      "後來": 4
-    },
-    "claude-haiku-4.5": {
-      "再见": 73,
-      "后来": 27
-    }
-  },
-  "model_distributions": {
-    "claude-fable-5.1": {
-      "__OTHER__": 0.0048543689320388345,
-      "再见": 0.0048543689320388345,
-      "后来": 0.0825242718446602,
-      "後來": 0.0048543689320388345,
-      "後来": 0.0048543689320388345,
-      "未完": 0.8980582524271845
-    },
-    "claude-opus-5": {
-      "__OTHER__": 0.0048543689320388345,
-      "再见": 0.0048543689320388345,
-      "后来": 0.0048543689320388345,
-      "後來": 0.0048543689320388345,
-      "後来": 0.0048543689320388345,
-      "未完": 0.9757281553398058
-    },
-    "claude-sonnet-5": {
-      "__OTHER__": 0.0048543689320388345,
-      "再见": 0.0048543689320388345,
-      "后来": 0.7330097087378641,
-      "後來": 0.043689320388349516,
-      "後来": 0.043689320388349516,
-      "未完": 0.16990291262135923
-    },
-    "claude-haiku-4.5": {
-      "__OTHER__": 0.0048543689320388345,
-      "再见": 0.7135922330097088,
-      "后来": 0.2669902912621359,
-      "後來": 0.0048543689320388345,
-      "後来": 0.0048543689320388345,
-      "未完": 0.0048543689320388345
-    }
-  },
-  "pairwise_jsd": {
-    "claude-fable-5.1|claude-opus-5": 0.031327092262858014,
-    "claude-fable-5.1|claude-sonnet-5": 0.43720408702400915,
-    "claude-fable-5.1|claude-haiku-4.5": 0.8048587872537631,
-    "claude-opus-5|claude-sonnet-5": 0.5995552368774764,
-    "claude-opus-5|claude-haiku-4.5": 0.9248017368873629,
-    "claude-sonnet-5|claude-haiku-4.5": 0.5168330619646267
-  },
-  "between_model_jsd": 0.5524300003783494,
-  "within_model_jsd": 0.01330427720408597,
-  "model_drift": {
-    "claude-fable-5.1": 0.018103666832640485,
-    "claude-opus-5": 0.0,
-    "claude-sonnet-5": 0.0254788213613954,
-    "claude-haiku-4.5": 0.009634620622307999
-  },
-  "model_drift_max": {
-    "claude-fable-5.1": 0.05180150802808709,
-    "claude-opus-5": 0.0,
-    "claude-sonnet-5": 0.051709195910817796,
-    "claude-haiku-4.5": 0.021407835862293327
-  },
-  "window_pair_jsd": {
-    "claude-fable-5.1": {
-      "1|2": 0.05180150802808709,
-      "1|3": 0.019800618001917042,
-      "1|4": 0.019800618001917042,
-      "2|3": 0.008609628481960872,
-      "2|4": 0.008609628481960872,
-      "3|4": 0.0
-    },
-    "claude-opus-5": {
-      "1|2": 0.0,
-      "1|3": 0.0,
-      "1|4": 0.0,
-      "2|3": 0.0,
-      "2|4": 0.0,
-      "3|4": 0.0
-    },
-    "claude-sonnet-5": {
-      "1|2": 0.008354437228102779,
-      "1|3": 0.005866719135726084,
-      "1|4": 0.0436868717635114,
-      "2|3": 0.01708956570154318,
-      "2|4": 0.02616613842867114,
-      "3|4": 0.051709195910817796
-    },
-    "claude-haiku-4.5": {
-      "1|2": 0.0,
-      "1|3": 0.0011634576150181854,
-      "1|4": 0.021407835862293327,
-      "2|3": 0.0011634576150181854,
-      "2|4": 0.021407835862293327,
-      "3|4": 0.012665136779224963
-    }
-  },
-  "weight": 0.9759168090165737,
-  "quality": {
-    "claude-fable-5.1": {
-      "completed": 100,
-      "planned": 100,
-      "nonempty_windows": 4,
-      "invalid": 0,
-      "valid_rate": 1.0,
-      "singleton_mass": 0.0
-    },
-    "claude-opus-5": {
-      "completed": 100,
-      "planned": 100,
-      "nonempty_windows": 4,
-      "invalid": 0,
-      "valid_rate": 1.0,
-      "singleton_mass": 0.0
-    },
-    "claude-sonnet-5": {
-      "completed": 100,
-      "planned": 100,
-      "nonempty_windows": 4,
-      "invalid": 0,
-      "valid_rate": 1.0,
-      "singleton_mass": 0.0
-    },
-    "claude-haiku-4.5": {
-      "completed": 100,
-      "planned": 100,
-      "nonempty_windows": 4,
-      "invalid": 0,
-      "valid_rate": 1.0,
-      "singleton_mass": 0.0
-    }
-  },
-  "reference_ready": true,
-  "drift_estimable": true,
-  "family_id": "CL039"
-}
-```
-
 ### CL057
 
 不要思考，直接回答。空车有1到10号座位，选一个，只回答编号。
@@ -2200,6 +2034,170 @@ Normalizer: `exact_trimmed_casefold`
 }
 ```
 
+### CL045
+
+不要思考，直接回答。随便选一个整点，只回答0到23中的数字。
+
+Normalizer: `exact_trimmed_casefold`
+
+```json
+{
+  "categories": [
+    "14",
+    "15",
+    "17",
+    "7",
+    "__OTHER__"
+  ],
+  "model_counts": {
+    "claude-fable-5.1": {
+      "14": 93,
+      "17": 3,
+      "7": 4
+    },
+    "claude-opus-5": {
+      "7": 49,
+      "17": 50,
+      "14": 1
+    },
+    "claude-sonnet-5": {
+      "7": 90,
+      "15": 6,
+      "17": 1,
+      "14": 3
+    },
+    "claude-haiku-4.5": {
+      "17": 50,
+      "7": 50
+    }
+  },
+  "model_distributions": {
+    "claude-fable-5.1": {
+      "14": 0.9121951219512195,
+      "15": 0.004878048780487805,
+      "17": 0.03414634146341464,
+      "7": 0.04390243902439024,
+      "__OTHER__": 0.004878048780487805
+    },
+    "claude-opus-5": {
+      "14": 0.014634146341463415,
+      "15": 0.004878048780487805,
+      "17": 0.4926829268292683,
+      "7": 0.48292682926829267,
+      "__OTHER__": 0.004878048780487805
+    },
+    "claude-sonnet-5": {
+      "14": 0.03414634146341464,
+      "15": 0.06341463414634146,
+      "17": 0.014634146341463415,
+      "7": 0.8829268292682927,
+      "__OTHER__": 0.004878048780487805
+    },
+    "claude-haiku-4.5": {
+      "14": 0.004878048780487805,
+      "15": 0.004878048780487805,
+      "17": 0.4926829268292683,
+      "7": 0.4926829268292683,
+      "__OTHER__": 0.004878048780487805
+    }
+  },
+  "pairwise_jsd": {
+    "claude-fable-5.1|claude-opus-5": 0.7357618538150217,
+    "claude-fable-5.1|claude-sonnet-5": 0.7274545377950493,
+    "claude-fable-5.1|claude-haiku-4.5": 0.7674845613304185,
+    "claude-opus-5|claude-sonnet-5": 0.2730671249109583,
+    "claude-opus-5|claude-haiku-4.5": 0.0018763773000759765,
+    "claude-sonnet-5|claude-haiku-4.5": 0.2766847131667898
+  },
+  "between_model_jsd": 0.4637215280530523,
+  "within_model_jsd": 0.019737557854581443,
+  "model_drift": {
+    "claude-fable-5.1": 0.02486513661894577,
+    "claude-opus-5": 0.01758390328159971,
+    "claude-sonnet-5": 0.02768663892126538,
+    "claude-haiku-4.5": 0.008814552596514919
+  },
+  "model_drift_max": {
+    "claude-fable-5.1": 0.05257013937229298,
+    "claude-opus-5": 0.036705868991278576,
+    "claude-sonnet-5": 0.05942704179232371,
+    "claude-haiku-4.5": 0.025379748309278263
+  },
+  "window_pair_jsd": {
+    "claude-fable-5.1": {
+      "cl045_1|cl045_2": 0.04117446904863057,
+      "cl045_1|cl045_3": 0.013725227312063062,
+      "cl045_1|cl045_4": 0.0035871481623948945,
+      "cl045_2|cl045_3": 0.011908278604324921,
+      "cl045_2|cl045_4": 0.05257013937229298,
+      "cl045_3|cl045_4": 0.02622555721396819
+    },
+    "claude-opus-5": {
+      "cl045_1|cl045_2": 0.001033621743689081,
+      "cl045_1|cl045_3": 0.025535698840242295,
+      "cl045_1|cl045_4": 0.009354051704252776,
+      "cl045_2|cl045_3": 0.036705868991278576,
+      "cl045_2|cl045_4": 0.0133702079763489,
+      "cl045_3|cl045_4": 0.019503970433786634
+    },
+    "claude-sonnet-5": {
+      "cl045_1|cl045_2": 0.017324258066966764,
+      "cl045_1|cl045_3": 0.02016062923831546,
+      "cl045_1|cl045_4": 0.02397060153094783,
+      "cl045_2|cl045_3": 0.023048583751282124,
+      "cl045_2|cl045_4": 0.022188719147756376,
+      "cl045_3|cl045_4": 0.05942704179232371
+    },
+    "claude-haiku-4.5": {
+      "cl045_1|cl045_2": 0.025379748309278263,
+      "cl045_1|cl045_3": 0.004094282791882686,
+      "cl045_1|cl045_4": 0.009154937575341304,
+      "cl045_2|cl045_3": 0.009154937575341304,
+      "cl045_2|cl045_4": 0.004094282791882686,
+      "cl045_3|cl045_4": 0.0010091265353632702
+    }
+  },
+  "weight": 0.9574366151654634,
+  "quality": {
+    "claude-fable-5.1": {
+      "completed": 100,
+      "planned": 100,
+      "nonempty_windows": 4,
+      "invalid": 0,
+      "valid_rate": 1.0,
+      "singleton_mass": 0.0
+    },
+    "claude-opus-5": {
+      "completed": 100,
+      "planned": 100,
+      "nonempty_windows": 4,
+      "invalid": 0,
+      "valid_rate": 1.0,
+      "singleton_mass": 0.01
+    },
+    "claude-sonnet-5": {
+      "completed": 100,
+      "planned": 100,
+      "nonempty_windows": 4,
+      "invalid": 0,
+      "valid_rate": 1.0,
+      "singleton_mass": 0.01
+    },
+    "claude-haiku-4.5": {
+      "completed": 100,
+      "planned": 100,
+      "nonempty_windows": 4,
+      "invalid": 0,
+      "valid_rate": 1.0,
+      "singleton_mass": 0.0
+    }
+  },
+  "reference_ready": true,
+  "drift_estimable": true,
+  "family_id": "CL045"
+}
+```
+
 ### Calibration / 校准
 
 ```json
@@ -2212,10 +2210,10 @@ Normalizer: `exact_trimmed_casefold`
       "sample_scope": "planned_count_of_valid_answers_per_cell",
       "target_denominator": "simulated_batches_of_valid_answers_not_all_http_runs",
       "thresholds": {
-        "claude-fable-5.1": 0.819200411849714,
-        "claude-opus-5": 0.8594326776987518,
-        "claude-sonnet-5": 0.9043178623882544,
-        "claude-haiku-4.5": 0.994863497776558
+        "claude-fable-5.1": 0.9442132371590845,
+        "claude-opus-5": 0.9770778266058828,
+        "claude-sonnet-5": 0.956037902223524,
+        "claude-haiku-4.5": 0.9831638190880001
       },
       "target": 0.99,
       "selection_target": 0.999,
@@ -2226,8 +2224,8 @@ Normalizer: `exact_trimmed_casefold`
         "claude-sonnet-5": 2500000,
         "claude-haiku-4.5": 2500000
       },
-      "seed": 47101,
-      "contract": "a9c82bda181c5b8f9e8d9a36fd2e7a1670be66837bbebec72dd4c071095ae784",
+      "seed": 492107,
+      "contract": "97faea613297c34a2d96895d210fdaa35575b7fcc9cc36eb1eb92399d6a013c3",
       "selection_batches_per_model": {
         "claude-fable-5.1": 100000,
         "claude-opus-5": 100000,
@@ -2252,9 +2250,203 @@ Normalizer: `exact_trimmed_casefold`
         "claude-sonnet-5": {
           "claude-fable-5.1": 0,
           "claude-opus-5": 0,
-          "claude-sonnet-5": 99909,
+          "claude-sonnet-5": 99900,
           "claude-haiku-4.5": 0,
-          "insufficient": 91
+          "insufficient": 100
+        },
+        "claude-haiku-4.5": {
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 0,
+          "claude-haiku-4.5": 99900,
+          "insufficient": 100
+        }
+      },
+      "confusion": {
+        "claude-fable-5.1": {
+          "claude-fable-5.1": 2497212,
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 0,
+          "claude-haiku-4.5": 0,
+          "insufficient": 2788
+        },
+        "claude-opus-5": {
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 2497466,
+          "claude-sonnet-5": 0,
+          "claude-haiku-4.5": 0,
+          "insufficient": 2534
+        },
+        "claude-sonnet-5": {
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 2497849,
+          "claude-haiku-4.5": 0,
+          "insufficient": 2151
+        },
+        "claude-haiku-4.5": {
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 0,
+          "claude-haiku-4.5": 2497430,
+          "insufficient": 2570
+        }
+      },
+      "correct_rates": {
+        "claude-fable-5.1": 0.9988848,
+        "claude-opus-5": 0.9989864,
+        "claude-sonnet-5": 0.9991396,
+        "claude-haiku-4.5": 0.998972
+      },
+      "independent_real_validation": false,
+      "pool_scope": "same_fit_pool_resampling"
+    },
+    "medium": {
+      "algorithm": "empirical-multinomial-pcg64-v5-valid-answers",
+      "status": "target_met",
+      "sample_scope": "planned_count_of_valid_answers_per_cell",
+      "target_denominator": "simulated_batches_of_valid_answers_not_all_http_runs",
+      "thresholds": {
+        "claude-fable-5.1": 0.9893025784439576,
+        "claude-opus-5": 0.9974170564563095,
+        "claude-sonnet-5": 0.9947707658311284,
+        "claude-haiku-4.5": 0.9986825910615226
+      },
+      "target": 0.99,
+      "selection_target": 0.999,
+      "total_batches": 10000000,
+      "per_model_batches": {
+        "claude-fable-5.1": 2500000,
+        "claude-opus-5": 2500000,
+        "claude-sonnet-5": 2500000,
+        "claude-haiku-4.5": 2500000
+      },
+      "seed": 492108,
+      "contract": "419ca25be66401b28418d1e263d6aa5700d2d59b4527c801601f03aa19982380",
+      "selection_batches_per_model": {
+        "claude-fable-5.1": 100000,
+        "claude-opus-5": 100000,
+        "claude-sonnet-5": 100000,
+        "claude-haiku-4.5": 100000
+      },
+      "selection_confusion": {
+        "claude-fable-5.1": {
+          "claude-fable-5.1": 99900,
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 0,
+          "claude-haiku-4.5": 0,
+          "insufficient": 100
+        },
+        "claude-opus-5": {
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 99900,
+          "claude-sonnet-5": 0,
+          "claude-haiku-4.5": 0,
+          "insufficient": 100
+        },
+        "claude-sonnet-5": {
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 99900,
+          "claude-haiku-4.5": 0,
+          "insufficient": 100
+        },
+        "claude-haiku-4.5": {
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 0,
+          "claude-haiku-4.5": 99900,
+          "insufficient": 100
+        }
+      },
+      "confusion": {
+        "claude-fable-5.1": {
+          "claude-fable-5.1": 2497575,
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 0,
+          "claude-haiku-4.5": 0,
+          "insufficient": 2425
+        },
+        "claude-opus-5": {
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 2497383,
+          "claude-sonnet-5": 0,
+          "claude-haiku-4.5": 0,
+          "insufficient": 2617
+        },
+        "claude-sonnet-5": {
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 2497362,
+          "claude-haiku-4.5": 0,
+          "insufficient": 2638
+        },
+        "claude-haiku-4.5": {
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 0,
+          "claude-haiku-4.5": 2497086,
+          "insufficient": 2914
+        }
+      },
+      "correct_rates": {
+        "claude-fable-5.1": 0.99903,
+        "claude-opus-5": 0.9989532,
+        "claude-sonnet-5": 0.9989448,
+        "claude-haiku-4.5": 0.9988344
+      },
+      "independent_real_validation": false,
+      "pool_scope": "same_fit_pool_resampling"
+    },
+    "high": {
+      "algorithm": "empirical-multinomial-pcg64-v5-valid-answers",
+      "status": "target_met",
+      "sample_scope": "planned_count_of_valid_answers_per_cell",
+      "target_denominator": "simulated_batches_of_valid_answers_not_all_http_runs",
+      "thresholds": {
+        "claude-fable-5.1": 0.9948621599721708,
+        "claude-opus-5": 0.9990391156369932,
+        "claude-sonnet-5": 0.9977851555135967,
+        "claude-haiku-4.5": 0.9995797952017745
+      },
+      "target": 0.99,
+      "selection_target": 0.999,
+      "total_batches": 10000000,
+      "per_model_batches": {
+        "claude-fable-5.1": 2500000,
+        "claude-opus-5": 2500000,
+        "claude-sonnet-5": 2500000,
+        "claude-haiku-4.5": 2500000
+      },
+      "seed": 492109,
+      "contract": "f21267c73069573a2cab337e93b990c1c6730415f717b1ab74e5524ee07f6e3a",
+      "selection_batches_per_model": {
+        "claude-fable-5.1": 100000,
+        "claude-opus-5": 100000,
+        "claude-sonnet-5": 100000,
+        "claude-haiku-4.5": 100000
+      },
+      "selection_confusion": {
+        "claude-fable-5.1": {
+          "claude-fable-5.1": 99900,
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 0,
+          "claude-haiku-4.5": 0,
+          "insufficient": 100
+        },
+        "claude-opus-5": {
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 99900,
+          "claude-sonnet-5": 0,
+          "claude-haiku-4.5": 0,
+          "insufficient": 100
+        },
+        "claude-sonnet-5": {
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 99900,
+          "claude-haiku-4.5": 0,
+          "insufficient": 100
         },
         "claude-haiku-4.5": {
           "claude-fable-5.1": 0,
@@ -2273,226 +2465,32 @@ Normalizer: `exact_trimmed_casefold`
           "insufficient": 2479
         },
         "claude-opus-5": {
-          "claude-fable-5.1": 4,
-          "claude-opus-5": 2497258,
+          "claude-fable-5.1": 0,
+          "claude-opus-5": 2497717,
           "claude-sonnet-5": 0,
           "claude-haiku-4.5": 0,
-          "insufficient": 2738
+          "insufficient": 2283
         },
         "claude-sonnet-5": {
           "claude-fable-5.1": 0,
           "claude-opus-5": 0,
-          "claude-sonnet-5": 2497184,
+          "claude-sonnet-5": 2497273,
           "claude-haiku-4.5": 0,
-          "insufficient": 2816
+          "insufficient": 2727
         },
         "claude-haiku-4.5": {
           "claude-fable-5.1": 0,
           "claude-opus-5": 0,
           "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 2497414,
-          "insufficient": 2586
+          "claude-haiku-4.5": 2497384,
+          "insufficient": 2616
         }
       },
       "correct_rates": {
         "claude-fable-5.1": 0.9990084,
-        "claude-opus-5": 0.9989032,
-        "claude-sonnet-5": 0.9988736,
-        "claude-haiku-4.5": 0.9989656
-      },
-      "independent_real_validation": false,
-      "pool_scope": "same_fit_pool_resampling"
-    },
-    "medium": {
-      "algorithm": "empirical-multinomial-pcg64-v5-valid-answers",
-      "status": "target_met",
-      "sample_scope": "planned_count_of_valid_answers_per_cell",
-      "target_denominator": "simulated_batches_of_valid_answers_not_all_http_runs",
-      "thresholds": {
-        "claude-fable-5.1": 0.9560618419329582,
-        "claude-opus-5": 0.979710121037962,
-        "claude-sonnet-5": 0.990433147236034,
-        "claude-haiku-4.5": 0.9996923488439007
-      },
-      "target": 0.99,
-      "selection_target": 0.999,
-      "total_batches": 10000000,
-      "per_model_batches": {
-        "claude-fable-5.1": 2500000,
-        "claude-opus-5": 2500000,
-        "claude-sonnet-5": 2500000,
-        "claude-haiku-4.5": 2500000
-      },
-      "seed": 47102,
-      "contract": "3c276cb615e5ec74edf6aac5a8165fe903cbb6c237e2ad7d695f3a2535a4e1f6",
-      "selection_batches_per_model": {
-        "claude-fable-5.1": 100000,
-        "claude-opus-5": 100000,
-        "claude-sonnet-5": 100000,
-        "claude-haiku-4.5": 100000
-      },
-      "selection_confusion": {
-        "claude-fable-5.1": {
-          "claude-fable-5.1": 99900,
-          "claude-opus-5": 0,
-          "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 0,
-          "insufficient": 100
-        },
-        "claude-opus-5": {
-          "claude-fable-5.1": 0,
-          "claude-opus-5": 99900,
-          "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 0,
-          "insufficient": 100
-        },
-        "claude-sonnet-5": {
-          "claude-fable-5.1": 0,
-          "claude-opus-5": 0,
-          "claude-sonnet-5": 99900,
-          "claude-haiku-4.5": 0,
-          "insufficient": 100
-        },
-        "claude-haiku-4.5": {
-          "claude-fable-5.1": 0,
-          "claude-opus-5": 0,
-          "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 99900,
-          "insufficient": 100
-        }
-      },
-      "confusion": {
-        "claude-fable-5.1": {
-          "claude-fable-5.1": 2497297,
-          "claude-opus-5": 0,
-          "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 0,
-          "insufficient": 2703
-        },
-        "claude-opus-5": {
-          "claude-fable-5.1": 0,
-          "claude-opus-5": 2497181,
-          "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 0,
-          "insufficient": 2819
-        },
-        "claude-sonnet-5": {
-          "claude-fable-5.1": 0,
-          "claude-opus-5": 0,
-          "claude-sonnet-5": 2497150,
-          "claude-haiku-4.5": 0,
-          "insufficient": 2850
-        },
-        "claude-haiku-4.5": {
-          "claude-fable-5.1": 0,
-          "claude-opus-5": 0,
-          "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 2497015,
-          "insufficient": 2985
-        }
-      },
-      "correct_rates": {
-        "claude-fable-5.1": 0.9989188,
-        "claude-opus-5": 0.9988724,
-        "claude-sonnet-5": 0.99886,
-        "claude-haiku-4.5": 0.998806
-      },
-      "independent_real_validation": false,
-      "pool_scope": "same_fit_pool_resampling"
-    },
-    "high": {
-      "algorithm": "empirical-multinomial-pcg64-v5-valid-answers",
-      "status": "target_met",
-      "sample_scope": "planned_count_of_valid_answers_per_cell",
-      "target_denominator": "simulated_batches_of_valid_answers_not_all_http_runs",
-      "thresholds": {
-        "claude-fable-5.1": 0.9760095683411752,
-        "claude-opus-5": 0.9918883177352852,
-        "claude-sonnet-5": 0.9966323883181621,
-        "claude-haiku-4.5": 0.9999164511894791
-      },
-      "target": 0.99,
-      "selection_target": 0.999,
-      "total_batches": 10000000,
-      "per_model_batches": {
-        "claude-fable-5.1": 2500000,
-        "claude-opus-5": 2500000,
-        "claude-sonnet-5": 2500000,
-        "claude-haiku-4.5": 2500000
-      },
-      "seed": 47103,
-      "contract": "3be1e662f336d34f15670ec0349f240643c13683f4eddbc888e93f9ea93772a2",
-      "selection_batches_per_model": {
-        "claude-fable-5.1": 100000,
-        "claude-opus-5": 100000,
-        "claude-sonnet-5": 100000,
-        "claude-haiku-4.5": 100000
-      },
-      "selection_confusion": {
-        "claude-fable-5.1": {
-          "claude-fable-5.1": 99900,
-          "claude-opus-5": 0,
-          "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 0,
-          "insufficient": 100
-        },
-        "claude-opus-5": {
-          "claude-fable-5.1": 0,
-          "claude-opus-5": 99900,
-          "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 0,
-          "insufficient": 100
-        },
-        "claude-sonnet-5": {
-          "claude-fable-5.1": 0,
-          "claude-opus-5": 0,
-          "claude-sonnet-5": 99900,
-          "claude-haiku-4.5": 0,
-          "insufficient": 100
-        },
-        "claude-haiku-4.5": {
-          "claude-fable-5.1": 0,
-          "claude-opus-5": 0,
-          "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 99900,
-          "insufficient": 100
-        }
-      },
-      "confusion": {
-        "claude-fable-5.1": {
-          "claude-fable-5.1": 2497627,
-          "claude-opus-5": 0,
-          "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 0,
-          "insufficient": 2373
-        },
-        "claude-opus-5": {
-          "claude-fable-5.1": 0,
-          "claude-opus-5": 2497433,
-          "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 0,
-          "insufficient": 2567
-        },
-        "claude-sonnet-5": {
-          "claude-fable-5.1": 0,
-          "claude-opus-5": 0,
-          "claude-sonnet-5": 2497718,
-          "claude-haiku-4.5": 0,
-          "insufficient": 2282
-        },
-        "claude-haiku-4.5": {
-          "claude-fable-5.1": 0,
-          "claude-opus-5": 0,
-          "claude-sonnet-5": 0,
-          "claude-haiku-4.5": 2497208,
-          "insufficient": 2792
-        }
-      },
-      "correct_rates": {
-        "claude-fable-5.1": 0.9990508,
-        "claude-opus-5": 0.9989732,
-        "claude-sonnet-5": 0.9990872,
-        "claude-haiku-4.5": 0.9988832
+        "claude-opus-5": 0.9990868,
+        "claude-sonnet-5": 0.9989092,
+        "claude-haiku-4.5": 0.9989536
       },
       "independent_real_validation": false,
       "pool_scope": "same_fit_pool_resampling"

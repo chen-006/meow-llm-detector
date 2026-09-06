@@ -1,8 +1,8 @@
-# meow LLM Detector 4.5.0 — Technical report
+# meow LLM Detector 4.5.1 — Technical report
 
 [中文](TECHNICAL_REPORT_CN.md) · [Getting started](README_EN.md) · [Evidence tables](docs/EVIDENCE_EN.md)
 
-This report describes the release source, GPT benchmark `4.5.0-rc4`, and Claude benchmark `4.5.0-rc3`. Application and benchmark versions are independent. Benchmark versions and digests remain unchanged to preserve experiment identity. Numerical claims can be traced to the bundled JSON. User acceptance is not a mathematical or security certification.
+This report describes the release source, GPT benchmark `4.5.0-rc4`, and Claude benchmark `4.5.1-rc1`. Application and benchmark versions are independent. Benchmark versions and digests remain unchanged to preserve experiment identity. Numerical claims can be traced to the bundled JSON. User acceptance is not a mathematical or security certification.
 
 ## 1. Question and evidence chain
 
@@ -48,7 +48,7 @@ Each cell names a deterministic normalizer. English behavioral labels trim edge 
 
 An otherwise valid unseen category becomes`__OTHER__` at scoring time. Unknown is not invalid, and a rare answer must not be removed merely because the reference never saw it. Conversely, HTTP200 or a completed stream is not a valid-answer guarantee.
 
-Every enabled cell needs at least`ceil(.9 × planned)` valid answers:4 of4,9 of10,18 of20. Any deficient cell makes the report yellow. Zero allocation disables a cell in that tier. There is no silent gate relaxation or unlimited refill. This separates real completion from the conditional simulation metric.
+New 4.5.1 tasks require at least ceil(.6 × planned) valid answers overall and per enabled cell: 3 of 4, 6 of 10, and 12 of 20 per cell. Deficient cells cannot produce a strong direction; overall shortage is shown as insufficient valid requests. Zero allocation disables a cell. Old tasks retain the 90% rule and saved reports are not rescored. Parse failures and invalid answers share the finite retry budget. Earlier calibration used full valid batches; its 99% result is not guaranteed for partial samples. A lower coverage gate does not improve identification capability.
 
 ## 5. Fitting, JSD, and weights
 
@@ -97,9 +97,9 @@ Ten million resamples reduce Monte Carlo error conditional on the empirical pool
 | GPT low | 99.88276% | 43 |
 | GPT medium | 99.89764% | 0 |
 | GPT high | 99.87628% | 0 |
-| Claude low | 99.88736% | 4 |
-| Claude medium | 99.88060% | 0 |
-| Claude high | 99.88832% | 0 |
+| Claude low | 99.88848% | 0 |
+| Claude medium | 99.88344% | 0 |
+| Claude high | 99.89092% | 0 |
 
 Zero means none observed, not zero risk. Full thresholds, correct/wrong/insufficient matrices are in the appendix and calibration.tiers.
 

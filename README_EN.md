@@ -1,10 +1,22 @@
-# meow LLM Detector v4.5.0
+# meow LLM Detector v4.5.1
 
 [中文](README_CN.md) · [Download](https://github.com/chen-006/meow-llm-detector/releases/latest)
 
 Download and extract the English ZIP. On Windows, double-click `start.bat`; on macOS / Linux, run `sh start.sh` inside the folder. Install Python 3.11 or newer first. The launcher asks before installing dependencies. In the browser, choose a model, enter your API URL and key, and click Start.
 
 Research reference: [One Token Is Enough](https://arxiv.org/abs/2607.10252). Community links: [Linux.do discussion](https://linux.do/t/topic/2704354) · [Routing discussion](https://linux.do/t/topic/2728901). Implementation inspiration and thanks: [hlwy-ai-checker](https://github.com/hanlinwenyuan/hlwy-ai-checker).
+
+## Changes in 4.5.1
+
+Web version: https://meowllm.top
+
+Claude defaults to benchmark4.5.1-rc1 (CL045 replaces CL039); GPT is unchanged. Probes dispatch round-robin. Stopped runs still receive the same verdict when sample requirements are met. Multiple-response streams use the last response ID; invalid final responses retry within the original budget.
+
+New detections require at least 60% valid samples overall and per enabled probe. Historical reports are not rescored. Parse failures and invalid normalized answers share the configured retry budget; requests are never replenished indefinitely. Finishing the request plan does not imply sufficient valid samples.
+
+Collection resume keeps the key bound to the selected endpoint; evidence export freezes its report ID. Explicit plain-HTTP options and clearer progress labels are included.
+
+The 60% gate is sample coverage, not confidence. Earlier 99% same-pool simulations used full valid batches, not partial batches or outside-candidate models.
 
 ## What does it do?
 
@@ -27,7 +39,7 @@ Optional request/response retention is next to Start, with export after the run.
 - Generate benchmark supports manual entry, import, and AI candidate generation, followed by reference sampling, selection suggestions, simulation, and export. AI and sampling calls cost money; local simulation does not call a model.
 - New collection windows must be at least one minute apart. You can choose probes manually instead of following recommendations.
 - Scheduled runs are separate tests, not accumulated evidence. Check for updates finds a release and asks before downloading it. Extract into a new folder and restart; the app does not replace running files.
-- v4.5.0 removes Juice, long-context and tool wrappers. Node.js is not required.
+- v4.5.1 removes Juice, long-context and tool wrappers. Node.js is not required.
 
 See the [technical report](TECHNICAL_REPORT_EN.md) for details and reproduction commands. Both languages share the same code. **Switching the UI language does not translate calibrated prompts.**
 

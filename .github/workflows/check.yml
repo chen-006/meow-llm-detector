@@ -19,5 +19,6 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: python -B -m unittest discover -s tests -v
       - run: node tests/report_urls.cjs
+      - run: node tests/v451_ui.cjs
       - run: python -B scripts/reproduce.py --check-only
       - run: python scripts/build_release.py --output dist

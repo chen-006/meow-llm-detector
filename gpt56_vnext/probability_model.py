@@ -8,7 +8,7 @@ from typing import Any, Iterable
 import numpy as np
 
 SMOOTHING = 0.5
-COMPLETION_RATIO = 0.90
+COMPLETION_RATIO = 0.60
 SCORING_VERSION = "meow-fingerprint-v2"
 INVALID_OUTPUT = "__INVALID_OUTPUT__"
 
@@ -150,7 +150,7 @@ def numeric_matches(fitted: dict, draws: dict) -> tuple:
 
 def score_counts(fitted: dict, counts: dict[str, dict[str, int]], planned: dict[str, int],
                  thresholds: dict[str, float] | None = None, *, calibrated: bool = True,
-                 claimed_model: str | None = None) -> dict[str, Any]:
+                 claimed_model: str | None = None, completion_ratio: float = COMPLETION_RATIO) -> dict[str, Any]:
     models = fitted["models"]
     draws = {}
     cell_details, reasons = {}, []
@@ -167,7 +167,7 @@ def score_counts(fitted: dict, counts: dict[str, dict[str, int]], planned: dict[
             normalized[category if category in allowed or category == INVALID_OUTPUT else "__OTHER__"] += count
         total = sum(normalized.values())
         valid = total - normalized.get(INVALID_OUTPUT, 0)
-        minimum = math.ceil(requested * COMPLETION_RATIO)
+        minimum = math.ceil(requested * completion_ratio)
         if valid < minimum:
             reasons.append("samples_incomplete")
         if total > requested:
@@ -178,6 +178,9 @@ def score_counts(fitted: dict, counts: dict[str, dict[str, int]], planned: dict[
             "counts": dict(normalized), "weight": cell["weight"],
             "average_log_likelihood": {},
         }
+    overall_valid = sum(cell["valid"] for cell in cell_details.values())
+    overall_planned = sum(planned.values())
+    insufficient_valid = overall_valid < math.ceil(overall_planned * completion_ratio)
     matched, matrix, details, likelihoods = numeric_matches(fitted, draws)
     scores = {model: float(matrix[0, index]) for index, model in enumerate(models)}
     matches = {model: float(matched[0, index]) for index, model in enumerate(models)}
@@ -200,4 +203,8 @@ def score_counts(fitted: dict, counts: dict[str, dict[str, int]], planned: dict[
         "model": winner, "claimed_model": claimed_model, "reasons": sorted(set(reasons)),
         "matches": matches, "scores": scores, "thresholds": thresholds or {},
         "cells": cell_details, "families": family_details,
+        "sample_policy": {"version": "60-percent-v1" if completion_ratio == .6 else "legacy-90",
+                          "overall_ratio": completion_ratio, "per_cell_ratio": completion_ratio},
+        "quality_status": "insufficient_valid_samples" if insufficient_valid else "cell_samples_incomplete" if "samples_incomplete" in reasons else "sufficient",
+        "valid_samples": overall_valid, "planned_samples": overall_planned,
     }

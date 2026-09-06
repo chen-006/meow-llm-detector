@@ -16,7 +16,7 @@ def release_files(root=ROOT):
     paths.update((root / 'gpt56_vnext').glob('*.py'))
     for folder in ('web', 'assets'):
         paths.update(path for path in (root / 'gpt56_vnext' / folder).iterdir() if path.is_file())
-    baseline = root / 'gpt56_vnext/baselines/v4.5.0'
+    baseline = root / 'gpt56_vnext/baselines/v4.5.1'
     manifest = baseline / 'manifest.json'
     paths.add(manifest)
     for item in json.loads(manifest.read_text())['packages']:

@@ -75,10 +75,18 @@ class FrozenRun:
                     "answer": response["answer"], "category": normalize_answer(response["answer"], cell["normalizer"]),
                     **{key: response.get(key) for key in ("usage", "http_status", "elapsed_ms", "response_id", "provider")}}
                 self.guard.check(result)
-                self.store.finish_attempt(attempt_id=attempt_id, status="ok", stage="complete", category="complete",
-                    retryable=False, http_status=response["http_status"], safe_message="complete",
+                if result["category"] == "__INVALID_OUTPUT__" and attempt_number < limit:
+                    error = RequestError("invalid_answer", status=response.get("http_status"),
+                                         evidence={"category": "__INVALID_OUTPUT__"})
+                    error.exchange = response
+                    raise error
+                if result["category"] == "__INVALID_OUTPUT__":
+                    result["error"] = RequestError("invalid_answer", retryable=False).public()
+                self.store.finish_attempt(attempt_id=attempt_id, status="ok", stage="normalization" if result.get("error") else "complete",
+                    category="invalid_answer" if result.get("error") else "complete",
+                    retryable=False, http_status=response["http_status"], safe_message="invalid_answer" if result.get("error") else "complete",
                     final_result=result, final_job_status="ok",
-                    exchange=exchange_record(response, self.guard) if self.options["retain_raw"] else None)
+                    exchange=exchange_record({**response, "error": result.get("error")}, self.guard) if self.options["retain_raw"] else None)
                 return
             except asyncio.CancelledError as exc:
                 if attempt_id is not None:
@@ -91,7 +99,9 @@ class FrozenRun:
                 if attempt_id is None:
                     raise
                 self.guard.check(exc.evidence)
-                retry = exc.retryable and attempt_number < limit and not self.stopped
+                safety_stop = exc.code in ("credential_echo", "credential_in_configuration")
+                exc.retryable = not safety_stop
+                retry = not safety_stop and attempt_number < limit and not self.stopped
                 result = {"job_id": job["job_id"], "probe_id": job["probe_id"], "cell_id": job["cell_id"],
                           "model": job["model"], "candidate_model": job.get("candidate_model"), "window": job.get("window", 1),
                           "status": "error", "error": exc.public(), "evidence": self.guard.redact(exc.evidence),
@@ -103,7 +113,7 @@ class FrozenRun:
                     final_result=result if not retry else None, final_job_status="error" if not retry else None,
                     exchange=exchange_record({**getattr(exc, "exchange", {}), "error": exc.public()}, self.guard)
                         if self.options["retain_raw"] else None)
-                if exc.code == "credential_echo":
+                if safety_stop:
                     self.failure = exc.code
                     self.stop()
                 if not retry:
@@ -115,7 +125,10 @@ class FrozenRun:
         self.store.reconcile_incomplete_attempts(self.session_id, limit)
         self.store.update_session_status(self.session_id, "running", clear_stop=True)
         queue = asyncio.Queue()
-        for job in self.store.pending_jobs(self.session_id, max_attempts=limit):
+        pending = self.store.pending_jobs(self.session_id, max_attempts=limit)
+        if self.config['kind'] == 'detection':
+            pending.sort(key=lambda job: (int(job['job_id'].rsplit(':', 1)[1]), job['cell_id']))
+        for job in pending:
             queue.put_nowait(job)
 
         async def worker():

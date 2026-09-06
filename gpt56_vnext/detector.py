@@ -46,6 +46,8 @@ class DetectorSession:
                        "tier": tier, "claimed_model": claimed, "request_model": alias,
                        "base_url": config.get("base_url"), "allow_insecure": config.get("allow_insecure") is True,
                        "runtime": runtime_options(config.get("runtime", {}))}
+        if "sample_ratio" in config:
+            self.config["sample_ratio"] = config["sample_ratio"]
         self.config["benchmark_publisher"] = config.get("benchmark_publisher", "local")
         jobs = build_single_jobs(self.package, tier, alias)
         self.runner = FrozenRun(store, session_id, self.config, jobs, key, transport=transport)
@@ -68,13 +70,14 @@ class DetectorSession:
         tier = self.package["tiers"][self.config["tier"]]
         fingerprint = score_counts(self.package["fitted"], dict(counts), tier["counts"], tier["thresholds"],
                                    calibrated=calibration_matches(self.package, self.config["tier"]),
-                                   claimed_model=self.config["claimed_model"])
+                                   claimed_model=self.config["claimed_model"], completion_ratio=self.config.get("sample_ratio", .9))
         progress = self.store.progress(self.session_id)
-        if self.runner.failure:
+        if self.runner.failure and 'sample_ratio' not in self.config:
             fingerprint.update({"verdict": "insufficient", "color": "yellow", "model": None,
                                 "reasons": sorted(set([*fingerprint["reasons"], self.runner.failure]))})
-        return {"schema_version": 1, "product": "meow LLM Detector", "version": "4.5.0",
+        return {"schema_version": 1, "product": "meow LLM Detector", "version": "4.5.1" if "sample_ratio" in self.config else "4.5.0",
                 "session_id": self.session_id, "updated_at": utc_now(), "operational_status": progress["status"],
+                "failure": self.runner.failure,
                 "fingerprint": fingerprint, "progress": progress, "mode": self.package["mode"],
                 "tier": self.config["tier"], "claimed_model": self.config["claimed_model"],
                 "request_model": self.config["request_model"], "endpoint": self.runner.base_url,

@@ -12,12 +12,12 @@
     },
     {
       "id": "meow-claude-baseline",
-      "version": "4.5.0-rc3",
+      "version": "4.5.1-rc1",
       "mode": "claude",
       "publisher": "maintainer",
-      "path": "benchmarks/official/meow-claude-baseline--4.5.0-rc3.meow.json",
-      "sha256": "66e22562ecaf7d0ef3c00fe9de79d5b7b8d7b42825f9329a0b1687ea34ac6538",
-      "content_sha256": "cce1a377deaa8909c89e2ef2611aeb7e11e14983658d71344831a67c44e32d8e"
+      "path": "benchmarks/official/meow-claude-baseline--4.5.1-rc1.meow.json",
+      "sha256": "149bda2b8fa7ed55df8f92bf02a6b8497ae9e3ebdf677f6618463199b8bd16fd",
+      "content_sha256": "2be6a59d8c39bd0c8116de35f0cf6d6aa518ac430cb5c68b5ccbd709169e3745"
     }
   ]
 }
