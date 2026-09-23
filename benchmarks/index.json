@@ -2,6 +2,28 @@
   "schema_version": 1,
   "packages": [
     {
+      "id": "meow-gpt-chat-compatible",
+      "version": "4.5.4-chat.20260924.1",
+      "name": "GPT · Chat 兼容版",
+      "mode": "chat",
+      "publisher": "maintainer",
+      "path": "benchmarks/official/meow-gpt-chat-compatible--4.5.4-chat.20260924.1.meow.json",
+      "sha256": "28fac40482ee53c64e1263a1bdabc7982652ef89aa49ec3e53f158841bbafa19",
+      "content_sha256": "1172fdfcf20e163f0445042bce96b46ff26e13a7d78a794a83d3504d161ff234",
+      "minimum_program_version": "4.5.4"
+    },
+    {
+      "id": "meow-claude-chat-compatible",
+      "version": "4.5.4-chat.20260924.1",
+      "name": "Claude · Chat 兼容版",
+      "mode": "chat",
+      "publisher": "maintainer",
+      "path": "benchmarks/official/meow-claude-chat-compatible--4.5.4-chat.20260924.1.meow.json",
+      "sha256": "db6728ff00d28f58ed21079ce66a82f70ba226a6530c52c5630fddd5cbf963da",
+      "content_sha256": "c96d6fab708c251cdf0267342c9a900080dc2ea0c740d78cf9393732e058f156",
+      "minimum_program_version": "4.5.4"
+    },
+    {
       "id": "meow-gpt-other-cap98-efficient",
       "version": "4.5.4-predictive.20260924.1",
       "name": "GPT · 新模型基准",
