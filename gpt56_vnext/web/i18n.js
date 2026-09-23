@@ -299,6 +299,7 @@ const messages = {
   invalid_host: ["请通过本机地址打开检测器", "Open the detector using its local address"],
   invalid_origin: ["已拒绝其他网站发起的操作", "An operation from another website was rejected"],
   response_refused: ["上游拒绝回答", "The upstream refused to answer"],
+  virtual_reference_not_requestable: ["参照候选不能作为实际请求模型，请选择真实模型", "A reference-only candidate cannot be requested; choose a real model"],
   response_incomplete: ["上游回答未完整结束", "The upstream response did not finish completely"],
   response_too_large: ["上游响应超过大小限制", "The upstream response exceeds the size limit"],
   truncated_stream: ["流式响应中途结束", "The stream ended early"],

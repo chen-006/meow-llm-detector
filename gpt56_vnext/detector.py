@@ -47,7 +47,9 @@ class DetectorSession:
         models = [model["id"] for model in self.package["models"]]
         claimed = config.get("claimed_model")
         alias = config.get("request_model", claimed)
-        if alias == 'reference-only:other':
+        references = {name for model in self.package["models"] if model.get("reference_only")
+                      for name in (model["id"], model.get("request_model"))}
+        if isinstance(alias, str) and (alias == 'reference-only:other' or alias in references):
             raise AppError('virtual_reference_not_requestable')
         if tier not in TIERS or claimed not in models or not isinstance(alias, str) or not alias.strip() or len(alias) > 256:
             raise AppError("invalid_detection_configuration")

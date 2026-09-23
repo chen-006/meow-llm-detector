@@ -70,7 +70,7 @@ def build_payload(mode: str, model: str, cell: dict) -> dict:
 def incomplete_code(reason):
     return {"max_output_tokens": "response_token_limit", "max_tokens": "response_token_limit",
             "length": "response_token_limit", "content_filter": "response_filtered",
-            "server_error": "upstream_response_failed"}.get(reason, "response_incomplete")
+            "refusal": "response_refused", "server_error": "upstream_response_failed"}.get(reason, "response_incomplete")
 
 
 class StreamParser:
