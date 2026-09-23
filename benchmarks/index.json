@@ -2,6 +2,28 @@
   "schema_version": 1,
   "packages": [
     {
+      "id": "meow-gpt-other-cap98-efficient",
+      "version": "4.5.4-predictive.20260924.1",
+      "name": "GPT · 新模型基准",
+      "mode": "gpt",
+      "publisher": "maintainer",
+      "path": "benchmarks/official/meow-gpt-other-cap98-efficient--4.5.4-predictive.20260924.1.meow.json",
+      "sha256": "4ef53fa8a334260c67ddf2ab27b9e7deea76e9149ef94e1de93f46a8db2c744f",
+      "content_sha256": "3f340582329c960f18fc8a989544b9ab879b59b5ffcae855530b00f34863a0af",
+      "minimum_program_version": "4.5.3"
+    },
+    {
+      "id": "meow-claude-other-cap98-efficient",
+      "version": "4.5.4-predictive.20260924.1",
+      "name": "Claude · 新模型基准",
+      "mode": "claude",
+      "publisher": "maintainer",
+      "path": "benchmarks/official/meow-claude-other-cap98-efficient--4.5.4-predictive.20260924.1.meow.json",
+      "sha256": "df005a15ef72cc805b57fd0caf8c8f6b99496ca37d73c6cc759adaa43158ef8c",
+      "content_sha256": "7d61ae9aba3b81b41de1b0dbd2caeb71ea2c53e85511959e160f9ef853d98322",
+      "minimum_program_version": "4.5.3"
+    },
+    {
       "id": "meow-claude-chat-compatible",
       "version": "4.5.4-chat.1",
       "name": "Claude · Chat 兼容版",
