@@ -2,6 +2,28 @@
   "schema_version": 1,
   "packages": [
     {
+      "id": "meow-gpt-other-cap98-efficient",
+      "version": "4.5.4-predictive.20260924.2",
+      "name": "GPT · 新模型基准",
+      "mode": "gpt",
+      "publisher": "maintainer",
+      "path": "benchmarks/official/meow-gpt-other-cap98-efficient--4.5.4-predictive.20260924.2.meow.json",
+      "sha256": "98f8d12c83100352addf44db15d8b57aa183338a4fb5f83ba30ffdbc06d78612",
+      "content_sha256": "e5dee4ccbc9cfd03883c49b3571815f44a4bf1b792730f7918d62c5eba4711e5",
+      "minimum_program_version": "4.5.4"
+    },
+    {
+      "id": "meow-gpt-chat-compatible",
+      "version": "4.5.4-chat.20260924.2",
+      "name": "GPT · Chat 兼容版",
+      "mode": "chat",
+      "publisher": "maintainer",
+      "path": "benchmarks/official/meow-gpt-chat-compatible--4.5.4-chat.20260924.2.meow.json",
+      "sha256": "5c835e5b6646359e33f3f56663b712f214eaa7eda1108088f3a3764bc0b4db72",
+      "content_sha256": "bb283cb4b04b9698b26fd26e4fc2d56149e25d4e0f03625bbc82605b3e453eb8",
+      "minimum_program_version": "4.5.4"
+    },
+    {
       "id": "meow-gpt-chat-compatible",
       "version": "4.5.4-chat.20260924.1",
       "name": "GPT · Chat 兼容版",
