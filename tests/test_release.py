@@ -19,7 +19,7 @@ from gpt56_vnext import BUNDLED_BASELINES
 
 class ReleaseTests(unittest.TestCase):
     def test_public_catalog_and_bound_packages(self):
-        index = validate_index(json.loads((ROOT / 'benchmarks/index.json').read_text()))
+        index = validate_index(json.loads((ROOT / 'benchmarks/index.json').read_text(encoding='utf-8')))
         for item in index['packages']:
             raw = (ROOT / item['path']).read_bytes()
             self.assertEqual(hashlib.sha256(raw).hexdigest(), item['sha256'])
