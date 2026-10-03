@@ -1,5 +1,7 @@
 # meow LLM Detector 4.5.4
 
+**128 requests recommended for the new GPT baseline.** The 32- and 64-request tiers distinguish 6.1 Sol from Astra less reliably and may return insufficient evidence more often. [Tiers and validation](docs/GPT_61_BASELINE_EN.md)
+
 Compare model behavior using distributions of answers to short probes. Fingerprint evidence is not identity authentication and does not establish why a provider's behavior differs.
 
 ## Download and launch

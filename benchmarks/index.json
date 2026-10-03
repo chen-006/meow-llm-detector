@@ -3,6 +3,28 @@
   "packages": [
     {
       "id": "meow-gpt-other-cap98-efficient",
+      "version": "4.5.4-predictive.20261003.1",
+      "name": "GPT · 6.1 Sol基准 · 推荐128次",
+      "mode": "gpt",
+      "publisher": "maintainer",
+      "path": "benchmarks/official/meow-gpt-other-cap98-efficient--4.5.4-predictive.20261003.1.meow.json",
+      "sha256": "9273dc33374e8be234a950437f4b7238228fbe096f051b1f210e46297c612362",
+      "content_sha256": "ff04ec844b5bd63c189748cff4caaf039be9cb908f398cb6c279efab9e8c4aec",
+      "minimum_program_version": "4.5.4"
+    },
+    {
+      "id": "meow-gpt-chat-compatible",
+      "version": "4.5.4-chat.20261003.1",
+      "name": "GPT · Chat兼容版 · 推荐128次",
+      "mode": "chat",
+      "publisher": "maintainer",
+      "path": "benchmarks/official/meow-gpt-chat-compatible--4.5.4-chat.20261003.1.meow.json",
+      "sha256": "7510f4901b741a592f889f7bd2926cfd74e5d5919875279e8056f5e74cf709c7",
+      "content_sha256": "5df2963f9e6d7791f36cc273cba6eb14330519d052a35588bebb1ed1664ff1ab",
+      "minimum_program_version": "4.5.4"
+    },
+    {
+      "id": "meow-gpt-other-cap98-efficient",
       "version": "4.5.4-predictive.20260924.2",
       "name": "GPT · 新模型基准",
       "mode": "gpt",
